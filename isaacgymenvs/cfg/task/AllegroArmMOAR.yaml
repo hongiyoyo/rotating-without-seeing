@@ -159,7 +159,7 @@ task:
       distribution: "gaussian"
     actions:
       # Paper (Rotating without Seeing): action noise +-U(0.06)
-      range: [-.06, .06]
+      range: [-0.06, .06]
       range_correlated: [0, .015] # range for correlated noise, refreshed with freq `frequency`
       operation: "additive"
       distribution: "uniform"

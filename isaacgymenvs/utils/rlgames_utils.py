@@ -147,6 +147,34 @@ class RLGPUAlgoObserver(AlgoObserver):
             self.writer.add_scalar('scores/iter', mean_scores, epoch_num)
             self.writer.add_scalar('scores/time', mean_scores, total_time)
 
+        # Per-object WandB metrics (synced via sync_tensorboard=True)
+        try:
+            isaac_env = self.algo.vec_env.env
+            if hasattr(isaac_env, '_pending_obj_stats') and isaac_env._pending_obj_stats:
+                obj_agg = {}
+                for stat in isaac_env._pending_obj_stats:
+                    obj = stat['obj']
+                    if obj not in obj_agg:
+                        obj_agg[obj] = {'rot': [], 'len': [], 'rew': []}
+                    obj_agg[obj]['rot'].append(stat['rotations'])
+                    obj_agg[obj]['len'].append(stat['ep_len'])
+                    obj_agg[obj]['rew'].append(stat['ep_reward'])
+                per_obj_mean_rew = {}
+                for obj_name, vals in obj_agg.items():
+                    n = len(vals['rot'])
+                    mean_rot = sum(vals['rot']) / n
+                    mean_len = sum(vals['len']) / n
+                    mean_rew = sum(vals['rew']) / n
+                    per_obj_mean_rew[obj_name] = mean_rew
+                    self.writer.add_scalar(f'PerObject/{obj_name}/rotation_count', mean_rot, epoch_num)
+                    self.writer.add_scalar(f'PerObject/{obj_name}/episode_length', mean_len, epoch_num)
+                    self.writer.add_scalar(f'PerObject/{obj_name}/episode_reward', mean_rew, epoch_num)
+                summary = " | ".join(f"{obj}: {rew:.2f}" for obj, rew in sorted(per_obj_mean_rew.items()))
+                print(f"[PerObject reward] epoch {epoch_num} | {summary}")
+                isaac_env._pending_obj_stats.clear()
+        except Exception:
+            pass
+
 
 class RLGPUEnv(vecenv.IVecEnv):
     def __init__(self, config_name, num_actors, **kwargs):

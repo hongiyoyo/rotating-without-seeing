@@ -19,4 +19,5 @@ python ./isaacgymenvs/train.py headless=True \
 experiment=z-axis-touch-only \
 train.params.config.user_prefix=z-axis-touch-only \
 wandb_activate=True \
+wandb_name=rws2 \
 ${EXTRA_ARGS}
