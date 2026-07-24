@@ -1,6 +1,13 @@
 """
 One-off script: regenerate the embedded MESH_DATA / CATALOG blobs inside
-object_viewer.html for the new 22-object set (16 relabeled + 6 new).
+object_viewer.html for the current 9-object training set. ball_1..4 and the
+original procedurally-generated stair block_3 were removed from training
+(pass 2); else_1/else_5 were promoted to block_3/block_5 and the rest of the
+else_* pool renumbered to else_1..8 (pass 2); else_1..8 were then excluded
+from training entirely (pass 3) -- they still exist as valid assets under
+assets/urdf/objects/else_*.urdf but are intentionally left out of this
+viewer's catalog since it mirrors the actual training roster (object_sets
+["C"] in allegro_arm_morb_axis.py), not the full assets folder.
 """
 import json
 import re
@@ -12,26 +19,13 @@ SCALE = 0.03
 CATALOG_INFO = [
     ("block_1", "Regular Block", "Blocks", 1),
     ("block_2", "Irregular Block · Time", "Blocks", 2),
-    ("block_3", "Stair Block", "Blocks", 3),
+    ("block_3", "Block", "Blocks", 3),
     ("block_4", "Block Corner", "Blocks", 4),
+    ("block_5", "Block", "Blocks", 5),
     ("cylinder_1", "Cylinder", "Cylinders", 1),
     ("cylinder_2", "Cylinder Axis", "Cylinders", 2),
     ("cylinder_3", "Decagon Prism", "Cylinders", 3),
     ("cylinder_4", "Cylinder Corner", "Cylinders", 4),
-    ("ball_1", "Sphere", "Balls", 1),
-    ("ball_2", "Dodecahedron", "Balls", 2),
-    ("ball_3", "Icosahedron", "Balls", 3),
-    ("ball_4", "Ellipsoid", "Balls", 4),
-    ("else_1", "Block", "Else", 1),
-    ("else_2", "Block", "Else", 2),
-    ("else_3", "Block", "Else", 3),
-    ("else_4", "Block", "Else", 4),
-    ("else_5", "Block", "Else", 5),
-    ("else_6", "Short Block", "Else", 6),
-    ("else_7", "Thin Block", "Else", 7),
-    ("else_8", "Thin Block Corner", "Else", 8),
-    ("else_9", "Irregular Block", "Else", 9),
-    ("else_10", "Irregular Block · Cross", "Else", 10),
 ]
 
 
@@ -151,20 +145,34 @@ html, n3 = re.subn(
     html,
 )
 
-# Fix the category list used to group the sidebar
-html, n4 = re.subn(
+# Fix the category list used to group the sidebar (handles the pre-relabel
+# state, the "Balls"-included state, and the "Else"-included state, since
+# ball_* and else_* have since been removed from the training roster/viewer
+# entirely -- only Blocks/Cylinders remain).
+html, n4a = re.subn(
     r'const cats = \["Blocks", "Cylinders", "Irregular"\];',
-    'const cats = ["Blocks", "Cylinders", "Balls", "Else"];',
+    'const cats = ["Blocks", "Cylinders"];',
     html,
 )
+html, n4b = re.subn(
+    r'const cats = \["Blocks", "Cylinders", "Balls", "Else"\];',
+    'const cats = ["Blocks", "Cylinders"];',
+    html,
+)
+html, n4c = re.subn(
+    r'const cats = \["Blocks", "Cylinders", "Else"\];',
+    'const cats = ["Blocks", "Cylinders"];',
+    html,
+)
+n4 = n4a + n4b + n4c
 
 assert n1 == 1, "MESH_DATA replace count: %d" % n1
 assert n2 == 1, "CATALOG replace count: %d" % n2
-# n3/n4 may already be 0 if this script has been run before (those two fixes
-# are idempotent - already applied and won't match a second time).
+# n3/n4 may already be 0 if this script has been run before (those fixes are
+# idempotent - already applied and won't match a second time).
 already_correct = 'info.key + " · " + info.cat.toLowerCase();' in html
 assert n3 == 1 or already_correct, "subtitle fix count: %d" % n3
-already_correct_cats = 'const cats = ["Blocks", "Cylinders", "Balls", "Else"];' in html
+already_correct_cats = 'const cats = ["Blocks", "Cylinders"];' in html
 assert n4 == 1 or already_correct_cats, "cats fix count: %d" % n4
 
 with open("object_viewer.html", "w", encoding="utf-8") as f:

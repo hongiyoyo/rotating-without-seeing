@@ -25,6 +25,84 @@
     <mesh filename="meshes/set2/else_2_2decompose.obj" scale=".03 .03 .03"/>
 <!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
   </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_3decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_4decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_5decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_6decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_7decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_8decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_9decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_10decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_11decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_12decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_13decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_14decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_2_15decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
 </collision>
 
 <!--    <collision>-->

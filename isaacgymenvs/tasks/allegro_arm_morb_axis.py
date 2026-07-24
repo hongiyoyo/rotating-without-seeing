@@ -173,30 +173,35 @@ class AllegroArmMOAR(VecTask):
 
         self.asset_files_dict = {
             "ball": "urdf/objects/ball.urdf",
-            # Renamed from the original set_objN_* names, then renumbered to a
-            # clean sequential block_1..4 / cylinder_1..4 scheme (block_3/
-            # cylinder_3 are brand-new objects, not renames -- see below):
+            # Object set "C" history (two relabeling passes):
+            # Pass 1 (renamed from the original set_objN_* names, then
+            # renumbered to a sequential block_1..4 / cylinder_1..4 scheme;
+            # block_3/cylinder_3 were brand-new procedurally-generated
+            # objects at that point, not renames):
             #   set_obj1_regular_block          -> block_1
             #   set_obj15_irregular_block_time  -> block_2
             #   set_obj6_block_corner           -> block_4
             #   set_obj11_cylinder              -> cylinder_1
             #   set_obj16_cylinder_axis         -> cylinder_2
             #   set_obj12_cylinder_corner       -> cylinder_4
-            #   set_obj2_block                  -> else_1
-            #   set_obj3_block                  -> else_2
-            #   set_obj4_block                  -> else_3
-            #   set_obj5_block                  -> else_4
-            #   set_obj7_block                  -> else_5
-            #   set_obj8_short_block            -> else_6
-            #   set_obj9_thin_block             -> else_7
-            #   set_obj10_thin_block_corner     -> else_8
-            #   set_obj13_irregular_block       -> else_9
-            #   set_obj14_irregular_block_cross -> else_10
+            #   set_obj2_block..set_obj14_*     -> else_1..else_10
+            # Pass 2 (this pass): the original procedurally-generated block_3
+            # (an L-shaped "stair" cube-minus-a-quadrant) and all 4 ball_*
+            # objects (sphere/dodecahedron/icosahedron/ellipsoid) were
+            # REMOVED from training entirely (they scored poorly and are no
+            # longer part of the set). else_1 was promoted to a new "block_3"
+            # (a plain block, not the stair shape) and else_5 promoted to
+            # "block_5"; the remaining else_2,3,4,6,7,8,9,10 were renumbered
+            # sequentially down to else_1..else_8. cylinder_3 (the decagon
+            # prism) was NOT touched by pass 2 and remains unchanged.
             "block_1": "urdf/objects/block_1.urdf",
             "block_2": "urdf/objects/block_2.urdf",
+            "block_3": "urdf/objects/block_3.urdf",
             "block_4": "urdf/objects/block_4.urdf",
+            "block_5": "urdf/objects/block_5.urdf",
             "cylinder_1": "urdf/objects/cylinder_1.urdf",
             "cylinder_2": "urdf/objects/cylinder_2.urdf",
+            "cylinder_3": "urdf/objects/cylinder_3.urdf",       # regular decagon (10-sided) prism
             "cylinder_4": "urdf/objects/cylinder_4.urdf",
             "else_1": "urdf/objects/else_1.urdf",
             "else_2": "urdf/objects/else_2.urdf",
@@ -206,28 +211,19 @@ class AllegroArmMOAR(VecTask):
             "else_6": "urdf/objects/else_6.urdf",
             "else_7": "urdf/objects/else_7.urdf",
             "else_8": "urdf/objects/else_8.urdf",
-            "else_9": "urdf/objects/else_9.urdf",
-            "else_10": "urdf/objects/else_10.urdf",
-            # New objects added on top of the original 16:
-            "block_3": "urdf/objects/block_3.urdf",           # cube minus one quarter, L-shaped "stair" block
-            "cylinder_3": "urdf/objects/cylinder_3.urdf",       # regular decagon (10-sided) prism
-            "ball_1": "urdf/objects/ball_1.urdf",               # sphere
-            "ball_2": "urdf/objects/ball_2.urdf",               # regular dodecahedron
-            "ball_3": "urdf/objects/ball_3.urdf",               # regular icosahedron
-            "ball_4": "urdf/objects/ball_4.urdf",               # ellipsoid (sphere squashed on two axes)
             "cross4_0": "urdf/objects/cross4_0.urdf", "cross4_1": "urdf/objects/cross4_1.urdf", "cross4_2": "urdf/objects/cross4_2.urdf", "cross4_3": "urdf/objects/cross4_3.urdf", "cross4_4": "urdf/objects/cross4_4.urdf"
         }
 
         self.object_sets = {
             "ball": ["ball"],
             "cross": ["cross4_0", "cross4_1", "cross4_2", "cross4_3", "cross4_4"],
-            "C": ['block_1', 'else_1', 'else_2',
-                  'else_3', 'else_4', 'block_4',
-                  'else_5', 'else_6', 'else_7',
-                  'else_8', 'cylinder_1', 'cylinder_4',
-                  'else_9', 'else_10', 'block_2',
-                  'cylinder_2', 'block_3', 'cylinder_3',
-                  'ball_1', 'ball_2', 'ball_3', 'ball_4']
+            # Pass 3: else_1..else_8 excluded from training entirely (kept as
+            # valid, loadable assets in asset_files_dict above in case they're
+            # needed again later, just not part of the "C" training roster).
+            # Training now targets only these 9 curated objects, with no
+            # generalization goal beyond them.
+            "C": ['block_1', 'block_2', 'block_3', 'block_4', 'block_5',
+                  'cylinder_1', 'cylinder_2', 'cylinder_3', 'cylinder_4']
         }
 
         self.object_set_id = self.cfg["env"].get("objSet", "0")

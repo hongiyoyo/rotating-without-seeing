@@ -23,12 +23,13 @@ rotating-without-seeing/
   rl_games/            (PPO 구현체, 통째로 복사)
   assets/urdf/
     xarm6/xarm6_allegro_right_fsr_2023_thin.urdf + meshes/  (손 - xArm6 + Allegro Hand + 16 FSR 센서)
-    objects/*.urdf + meshes/set2/*.obj                       (학습용 물체 22개, 아래 참고)
+    objects/*.urdf + meshes/set2/*.obj                       (자산 파일 17개 존재, 실제 학습(objSet C)에는 9개만 사용 — 아래 참고)
   scripts/train_z_axis.sh   (학습 실행 스크립트)
   tools/
-    object_viewer.html        (물체 22개를 브라우저에서 3D로 확인하는 뷰어, mesh 데이터 내장)
-    generate_new_objects.py   (새 물체 6개를 만든 스크립트 - 재현/참고용)
+    object_viewer.html        (물체들을 브라우저에서 3D로 확인하는 뷰어, mesh 데이터 내장)
+    generate_new_objects.py   (cylinder_3 등 절차적으로 생성한 물체를 만든 스크립트 - 재현/참고용)
     regen_viewer_data.py      (object_viewer.html의 내장 mesh 데이터를 재생성하는 스크립트)
+    relabel_objects_2.py      (물체 목록 2차 재정리에 쓴 1회성 스크립트 - 기록용)
   install.md
 ```
 
@@ -61,31 +62,35 @@ rotating-without-seeing/
 
 지금은 `ablation_mode: no-pc`로 고쳐뒀고, 이 값은 코드 어디에서도 특별 취급되지 않는 "안전한 기본" 값입니다(grep으로 전체 확인함). 이 필드를 건드릴 일이 있으면 반드시 `"no-tactile"`/`"multi-modality"`를 피하세요.
 
-## 학습용 물체 (22개, `objSet: "C"`)
+## 학습용 물체 (9개, `objSet: "C"`)
 
-원본 16개 물체를 요청에 따라 리네이밍하고, 새 물체 6개를 추가했습니다. 전부 `assets/urdf/objects/*.urdf` + `assets/urdf/objects/meshes/set2/*.obj`에 있고, `isaacgymenvs/tasks/allegro_arm_morb_axis.py`의 `asset_files_dict`/`object_sets["C"]`에 등록되어 있습니다. 모든 물체는 원본 mesh 기준 bounding box ~2.0 unit(= URDF `scale=".03 .03 .03"` 적용 시 실제 약 6cm)로, 기존 물체들과 동일한 크기 규격입니다.
+세 차례 리네이밍/정리를 거쳤습니다. 전부 `assets/urdf/objects/*.urdf` + `assets/urdf/objects/meshes/set2/*.obj`에 있고, `isaacgymenvs/tasks/allegro_arm_morb_axis.py`의 `asset_files_dict`/`object_sets["C"]`에 등록되어 있습니다. 모든 물체는 원본 mesh 기준 bounding box ~2.0 unit(= URDF `scale=".03 .03 .03"` 적용 시 실제 약 6cm)로 동일한 크기 규격입니다.
+
+**1차 정리**: 원본 16개 물체를 리네이밍(`block_1~2,4`, `cylinder_1~2,4`, `else_1~10`)하고, 절차적으로 생성한 새 물체 6개(`block_3`=계단형 L자 블록, `cylinder_3`=정십각기둥, `ball_1~4`=구/정12면체/정20면체/타원체)를 추가해 총 22개.
+
+**2차 정리**: GPU 학습 결과 `block_3`(계단형)과 `ball_1~4` 전부 reward가 확연히 낮게 나와, 이 5개 물체를 학습 세트에서 완전히 제거(mesh/urdf 파일까지 삭제)했습니다. 대신 `else_1`을 새 `block_3`으로, `else_5`를 새 `block_5`로 승격(둘 다 평범한 블록 형태, 계단형 아님)하고, 나머지 `else_2,3,4,6,7,8,9,10`을 `else_1~8`로 재정렬해 총 17개.
+
+**3차 정리 (현재 상태)**: "학습한 물체에서만 잘 되면 충분하다"는 목표로 범용성을 포기하고, **`else_1~8`을 학습 대상(`object_sets["C"]`)에서 제외**했습니다. `else_*` 자산 파일 자체는 삭제하지 않고 `asset_files_dict`에는 여전히 남아있지만(나중에 다시 필요하면 재사용 가능), `object_sets["C"]`에는 더 이상 포함되지 않아 학습에 쓰이지 않습니다. 최종 학습 세트는 아래 9개뿐입니다.
 
 | 라벨 | 형상 | 비고 |
 |---|---|---|
 | `block_1` | 정육면체 | 원래 1번 |
 | `block_2` | 불규칙 블록("time") | 원래 15번 |
-| `block_3` | **계단(L자) 모양** | 신규 — 정육면체에서 한 사분면(x∈[0,1],y∈[0,1], 전체 높이)을 도려냄. 충돌 메시는 볼록 박스 2개로 정확히 분해 |
+| `block_3` | 블록(평범한 형태) | 옛 `else_1` 승격 — **계단형이 아님** (계단형 물체는 삭제됨) |
 | `block_4` | 모서리 깎인 블록 | 원래 6번 |
+| `block_5` | 블록(평범한 형태) | 옛 `else_5` 승격 |
 | `cylinder_1` | 원기둥 | 원래 11번 |
-| `cylinder_2` | **정십각기둥** | 신규 |
-| `cylinder_3` | 모서리 깎인 원기둥 | 원래 12번 |
-| `cylinder_4` | 축 방향 압축 원기둥 | 원래 16번 |
-| `ball_1` | **구** | 신규 (Fibonacci sphere 200점 + convex hull) |
-| `ball_2` | **정12면체**(dodecahedron) | 신규 — "정12각형"을 정다면체로 해석 |
-| `ball_3` | **정20면체**(icosahedron) | 신규 |
-| `ball_4` | **타원체** | 신규 — 구를 두 축으로 0.8배 압축 |
-| `else_1`~`else_10` | 나머지 원래 물체 (2,3,4,5,7,8,9,10,13,14번) | 순서 무관, 요청대로 일괄 리네이밍 |
+| `cylinder_2` | 축 방향 압축 원기둥 | 원래 16번 |
+| `cylinder_3` | **정십각기둥** | 절차적 생성 |
+| `cylinder_4` | 모서리 깎인 원기둥 | 원래 12번 |
 
-**`ball` 키는 이 22개와 무관**하니 헷갈리지 마세요 — baoding balls 과제 전용의 별도 단일 구 오브젝트입니다(건드리지 않음).
+**학습에서 빠졌지만 자산은 남아있는 물체**: `else_1~8` — `asset_files_dict`엔 있지만 `object_sets["C"]`엔 없음. 다시 학습에 포함시키려면 `object_sets["C"]` 리스트에 이름만 추가하면 됩니다(파일은 이미 존재).
 
-새 물체 6개는 전부 볼록(convex) 도형이라 충돌 메시가 시각 메시와 동일합니다(단, `block_3`만 비볼록이라 2-파트로 분해). `tools/generate_new_objects.py`를 다시 실행하면 동일한 절차로 재생성됩니다.
+**삭제되어 완전히 사라진 물체**: 계단형 `block_3`(구형), `ball_1`(구)/`ball_2`(정12면체)/`ball_3`(정20면체)/`ball_4`(타원체) — mesh/urdf 파일 자체를 삭제했습니다.
 
-**해석 관련 확인 필요**: "정12각형"/"정20각형"은 평평한 다각기둥이 아니라 3D 정다면체(12/20면체)로 해석했습니다. `ball_` 그룹(구→다면체→타원체)이 "둥근 계열"로 보여서 이렇게 판단했는데, 만약 원래 의도가 `cylinder_3`처럼 평평한 다각기둥이었다면 `generate_new_objects.py`의 `make_ball_2`/`make_ball_3`만 다시 쓰면 됩니다.
+**`ball` 키는 이 9개와 무관**하니 헷갈리지 마세요 — baoding balls 과제 전용의 별도 단일 구 오브젝트입니다(건드리지 않음).
+
+`cylinder_3`(정십각기둥)은 볼록(convex) 도형이라 충돌 메시가 시각 메시와 동일합니다. `tools/generate_new_objects.py`를 다시 실행하면 동일한 절차로 재생성됩니다(단, 삭제된 `block_3`/`ball_1~4`도 함께 재생성되므로 재실행 후 `tools/relabel_objects_2.py`를 다시 돌리거나 수동으로 정리가 필요합니다).
 
 ## 초기 상태 랜덤화
 
@@ -110,13 +115,13 @@ bash scripts/train_z_axis.sh 0 task.env.numEnvs=64   # 빠른 스모크 테스�
 **정적으로 확인 완료:**
 - `isaacgymenvs/tasks/allegro_arm_morb_axis.py` 문법 검사(`py_compile`) 통과
 - `cfg/task/AllegroArmMOAR.yaml`, `cfg/train/AllegroArmMOARPPO.yaml` yaml 파싱 통과
-- 22개 물체 URDF가 참조하는 모든 mesh 파일 존재 확인, `asset_files_dict`/`object_sets["C"]` 키 일치 확인
-- 신규 물체 6개의 mesh volume/bounding box 계산으로 형상·크기 검증 (전부 양의 부피 = 법선 방향 정상)
-- `num_training_objects`/one-hot 벡터/`numStates`가 물체 개수(16→22)에 따라 동적으로 스케일됨을 코드로 확인 (하드코딩된 16 가정 없음)
+- `object_sets["C"]`(현재 학습용 9개)의 모든 URDF가 참조하는 mesh 파일 존재 확인, `asset_files_dict` 키 일치 확인
+- `num_training_objects`/one-hot 벡터/`numStates`가 물체 개수 변화(16→22→17)에 따라 동적으로 스케일됨을 코드로 확인 (하드코딩된 개수 가정 없음)
 - `ablation_mode` 관련 촉각-제거 버그 발견 및 수정
+- 물체 목록 2차 정리(block_3/ball_1~4 삭제, else_1/else_5→block_3/block_5 승격, 나머지 재정렬) 시 파일명 체이닝 과정에서 삭제 로직 버그로 else_* 파일이 잘못 지워지는 사고가 있었으나, git 커밋으로 복구 후 3단계(임시 이름 경유) 방식으로 안전하게 재작업 완료 — 최종 상태 재검증됨
 
 **GPU 환경에서 사람이 확인해야 할 것:**
 1. `bash scripts/train_z_axis.sh 0 task.env.numEnvs=64`로 소규모 스모크 테스트 — 크래시 없이 기동하는지, 관측 차원이 실제로 340인지(276이 아닌지) 로그로 확인
 2. 접촉 신호(`contacts`)가 실제로 0.01N 근방에서 반응하는지, 항상 0이거나 항상 1이 아닌지 확인
 3. `numEnvs=8192`로 본 학습을 돌려 Cumulative Rotation Reward가 논문 Fig.6처럼 우상향하는지 확인
-4. `block_3`(계단 모양)이 물리적으로 이상 없이(끼임, 관통 등) 시뮬레이션되는지 확인 — 2-파트 볼록 분해가 실제 IsaacGym 충돌 계산에서 문제없는지는 아직 실기동 검증 전
+4. 9개 물체(block_1~5, cylinder_1~4) 간 reward 편차(특히 새로 승격된 `block_3`/`block_5`, 그리고 유지되는 `cylinder_3`)가 고르게 나오는지 확인 — 이전에 삭제된 계단형 block_3/ball_1~4는 reward가 확연히 낮았던 이력이 있어 참고할 것. else_1~8은 자산으로는 남아있지만 이번부터 학습에서 완전히 제외됨(범용성 포기, 9개 물체에만 집중)

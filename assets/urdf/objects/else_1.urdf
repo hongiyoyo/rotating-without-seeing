@@ -13,6 +13,18 @@
     <mesh filename="meshes/set2/else_1_0decompose.obj" scale=".03 .03 .03"/>
 <!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
   </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_1_1decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
+</collision><collision>
+  <origin xyz="0 0 0"/>
+  <geometry>
+    <mesh filename="meshes/set2/else_1_2decompose.obj" scale=".03 .03 .03"/>
+<!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
+  </geometry>
 </collision>
 
 <!--    <collision>-->

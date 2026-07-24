@@ -4,13 +4,13 @@
     <visual>
       <origin xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/set2/else_9.obj" scale=".03 .03 .03"/>
+        <mesh filename="meshes/set2/block_5.obj" scale=".03 .03 .03"/>
       </geometry>
     </visual>
     <collision>
   <origin xyz="0 0 0"/>
   <geometry>
-    <mesh filename="meshes/set2/else_9_0decompose.obj" scale=".03 .03 .03"/>
+    <mesh filename="meshes/set2/block_5_0decompose.obj" scale=".03 .03 .03"/>
 <!--          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>-->
   </geometry>
 </collision>
@@ -18,7 +18,7 @@
 <!--    <collision>-->
 <!--      <origin xyz="0 0 0"/>-->
 <!--      <geometry>-->
-<!--        <mesh filename="meshes/set2/else_9.obj" scale=".03 .03 .03"/>-->
+<!--        <mesh filename="meshes/set2/block_5.obj" scale=".03 .03 .03"/>-->
 <!--&lt;!&ndash;          <mesh filename="meshes/custom/obj0_ball.obj" scale=".05 .05 .05"/>&ndash;&gt;-->
 <!--      </geometry>-->
 <!--    </collision>-->
