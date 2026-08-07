@@ -96,7 +96,7 @@ class RLGPUAlgoObserver(AlgoObserver):
     """Allows us to log stats from the env along with the algorithm running stats. """
 
     def __init__(self):
-        pass
+        self._per_object_log_warned = False
 
     def after_init(self, algo):
         self.algo = algo
@@ -172,8 +172,10 @@ class RLGPUAlgoObserver(AlgoObserver):
                 summary = " | ".join(f"{obj}: {rew:.2f}" for obj, rew in sorted(per_obj_mean_rew.items()))
                 print(f"[PerObject reward] epoch {epoch_num} | {summary}")
                 isaac_env._pending_obj_stats.clear()
-        except Exception:
-            pass
+        except Exception as e:
+            if not self._per_object_log_warned:
+                print(f"[PerObject reward] logging failed, will stop retrying this warning: {e}")
+                self._per_object_log_warned = True
 
 
 class RLGPUEnv(vecenv.IVecEnv):

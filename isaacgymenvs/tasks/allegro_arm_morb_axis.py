@@ -229,6 +229,7 @@ class AllegroArmMOAR(VecTask):
         self.object_set_id = self.cfg["env"].get("objSet", "0")
         self.used_training_objects = self.object_sets[str(self.object_set_id)]
         self.num_training_objects = len(self.used_training_objects)
+        self.deterministic_object_assign = self.cfg["env"].get("deterministicObjectAssign", False)
 
         if self.object_set_id == "cross":
             self.obj_init_pos_shift = {
@@ -742,7 +743,11 @@ class AllegroArmMOAR(VecTask):
             self.hand_indices.append(hand_idx)
 
             # add object
-            obj_class_indice = np.random.randint(0, len(self.used_training_objects), 1)[0]
+            if self.deterministic_object_assign:
+                # round-robin over training objects (used for visualization / balanced data collection)
+                obj_class_indice = i % len(self.used_training_objects)
+            else:
+                obj_class_indice = np.random.randint(0, len(self.used_training_objects), 1)[0]
             select_obj = self.used_training_objects[obj_class_indice]
             # randomize initial quat
             if self.object_set_id == "cross": 

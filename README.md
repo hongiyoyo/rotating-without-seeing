@@ -4,12 +4,30 @@
 
 이 문서는 이 코드를 처음 이어받는 사람/에이전트가 배경 설명 없이 바로 작업을 이어갈 수 있도록 지금까지의 작업 이력, 설계 근거, 그리고 **반드시 알아야 할 함정들**을 정리한 것입니다.
 
-## 배경
+## 현재 상태 요약 (가장 먼저 읽을 것)
 
-- 목표 논문: *"Rotating without Seeing: Towards In-hand Dexterity through Touch"* (Yin et al., RSS 2023) — 16개의 이진 접촉 센서(FSR)만으로 vision 없이 물체를 z/x/y축으로 회전시키는 policy를 IsaacGym에서 PPO로 학습.
-- 원본 소스: `C:\jaehong_yang\in-hand-rotation` — "Robot Synesthesia" (ICRA 2024) 코드베이스이며, 그 안에 위 논문을 재현하는 `observationType=partial_stack` 모드(= "PS" 베이스라인)가 이미 포함되어 있음.
-- 이 폴더(`rotating-without-seeing`)는 그 코드베이스에서 **z축, 촉각 전용(partial_stack), objSet=C 물체 세트** 시나리오 하나에만 필요한 파일들을 골라내고, 논문 스펙에 맞게 도메인 랜덤화/보상 관련 수치들을 직접 수정한 결과물입니다. 다른 실험(baoding balls, cross wheel-wrench, visual RL, distillation)은 이 폴더에 없습니다.
-- **이 개발 PC에는 GPU가 없어 실제 학습 실행 검증은 못했습니다.** 지금까지 한 것은 전부 정적 검증(문법 검사, yaml 파싱, 파일 존재 확인, 메시 volume/bbox 계산)까지이고, 실제 `python isaacgymenvs/train.py ...` 실행 및 학습 곡선 확인은 GPU 환경에서 사람이 직접 해야 합니다.
+1. **본 학습(numEnvs=8192, 20100 epoch) 완료됨.** Best 체크포인트:
+   `runs/z-axis-touch-only/z-axis-touch-onlyS1.0_C0.0_M0.02026-08-03_12-09-19-83810/nn/z-axis-touch-only.pth`
+   (rolling reward 974.54, epoch 19927 시점 저장 — 마지막 epoch 20100 체크포인트의 reward 870.41보다 높음). 근거·확인 방법은 [본 학습 결과](#본-학습-결과) 참고.
+2. **GPU 없다는 이전 버전 README 기술은 틀렸습니다.** 이 Windows PC는 WSL2를 통해 실제 NVIDIA GPU에 접근 가능하고, IsaacGym·conda 환경이 이미 다 세팅되어 있습니다. [실행 환경](#실행-환경-wsl2) 섹션 필독 — 여기부터 안 읽으면 "GPU 없어서 못 함"이라고 잘못 판단하게 됩니다.
+3. 이 best 체크포인트로 **물체별 촉각+관절위치 시계열을 수집해서 9-way CNN 분류기를 학습**하는 별도 하위 프로젝트를 완료했습니다 (정책 자체는 물체 정체성을 전혀 모른 채 회전만 함 — 그 결과로 나온 감각 신호만으로 어떤 물체인지 맞히는 실험). 결과: 촉각+관절 90.3%, 관절만 87.8%, 촉각만 82.7%. 전체 내용은 [촉각 기반 물체 분류](#촉각-기반-물체-분류) 참고.
+4. `scripts/train_z_axis.sh`가 **CRLF 줄바꿈 때문에 WSL bash에서 실행 자체가 안 되던 버그**를 고쳤습니다 (LF로 정규화 완료). Windows 도구로 이 저장소의 `.sh` 파일을 다시 저장/편집하면 같은 문제가 재발할 수 있으니, 이상하게 스크립트가 안 돌면 `file <script>.sh`로 line ending부터 확인하세요.
+5. 다음에 자연스럽게 이어갈 수 있는 작업(요청받은 적은 없지만 참고): x/y축으로 확장, 관절+촉각 외 다른 관측(예: prev_action) 채널 추가해서 분류 정확도 개선, block_3/cylinder_1처럼 특정 물체 쌍이 계속 헷갈리는 원인을 mesh 형상 비교로 더 파보기, distillation(학생 정책으로 압축) 등.
+
+## 실행 환경 (WSL2)
+
+**이 Windows 개발 PC에서 GPU/IsaacGym을 쓰려면 WSL2를 거쳐야 합니다.** 네이티브 Windows Python 환경에는 torch/isaacgym이 설치되어 있지 않고, IsaacGym Preview 4는 애초에 Linux 전용입니다.
+
+- 배포판: **WSL2 Ubuntu-24.04** (`wsl.exe -e bash -lc "..."`로 명령 실행)
+- conda 환경: **`robosyn`** (`/home/openfoam/miniconda3/envs/robosyn`) — Python 3.8.20, PyTorch 2.4.1+cu121, IsaacGym Preview 4(`/home/openfoam/IsaacGym_Preview_4_Package`), wandb, hydra-core, sklearn 등 필요한 패키지가 전부 이미 설치되어 있습니다. `install.md`는 원본 세팅 안내문이지만 **이 WSL 환경에는 이미 다 되어 있으니 새로 설치할 필요 없습니다.**
+- GPU: NVIDIA GeForce RTX 4070 (16GB), WSL2를 통해 정상적으로 CUDA/PhysX GPU 파이프라인 접근 가능함을 실제 학습으로 확인함.
+- 이 저장소는 Windows 경로 `C:\jaehong_yang\rotating-without-seeing`에 있고, WSL에서는 `/mnt/c/jaehong_yang/rotating-without-seeing`로 동일 파일에 접근합니다. 코드 편집은 Windows 쪽에서, 실행은 WSL 쪽에서 하면 됩니다.
+- 실행 명령 패턴:
+  ```bash
+  wsl.exe -e bash -lc "cd /mnt/c/jaehong_yang/rotating-without-seeing && source ~/miniconda3/etc/profile.d/conda.sh && conda activate robosyn && <명령>"
+  ```
+- **GUI 뷰어도 됩니다.** WSLg가 설정되어 있어 `headless=False`로 띄우면 Windows 데스크톱에 실제 창(타이틀 "Isaac Gym (Ubuntu-24.04)", 프로세스는 `msrdc.exe`)이 뜹니다. 단, NVIDIA Vulkan ICD가 이 WSL 배포판에는 안 잡혀서(`/usr/share/vulkan/icd.d/`에 nvidia_icd.json 없음) 어떤 렌더링 경로를 타는지는 불확실하지만, 실제로 시도했을 때 정상적으로 창이 뜨고 GPU 사용률도 올라가며 잘 동작했습니다.
+- 학습/체크포인트/wandb 로그인 등은 전부 이 WSL `robosyn` 사용자(`openfoam`) 계정 하에서 이미 인증되어 있습니다(`~/.netrc`에 wandb 키 존재).
 
 ## 폴더 구조
 
@@ -24,20 +42,31 @@ rotating-without-seeing/
   assets/urdf/
     xarm6/xarm6_allegro_right_fsr_2023_thin.urdf + meshes/  (손 - xArm6 + Allegro Hand + 16 FSR 센서)
     objects/*.urdf + meshes/set2/*.obj                       (자산 파일 17개 존재, 실제 학습(objSet C)에는 9개만 사용 — 아래 참고)
-  scripts/train_z_axis.sh   (학습 실행 스크립트)
+  scripts/train_z_axis.sh   (학습 실행 스크립트 — LF로 정규화됨, CRLF 재발 주의)
+  runs/                 (gitignored. 학습 체크포인트/텐서보드 로그. best 체크포인트 위치는 위 "현재 상태 요약" 참고.
+                          이 디렉터리는 이 워킹 디렉터리에만 존재 — 새로 clone하면 없음, 재현하려면 재학습 필요)
+  wandb/                (gitignored. wandb 로컬 캐시/로그)
   tools/
     object_viewer.html        (물체들을 브라우저에서 3D로 확인하는 뷰어, mesh 데이터 내장)
     generate_new_objects.py   (cylinder_3 등 절차적으로 생성한 물체를 만든 스크립트 - 재현/참고용)
     regen_viewer_data.py      (object_viewer.html의 내장 mesh 데이터를 재생성하는 스크립트)
     relabel_objects_2.py      (물체 목록 2차 재정리에 쓴 1회성 스크립트 - 기록용)
-  install.md
+    collect_tactile_data.py   (신규: best 체크포인트로 정책을 굴려 촉각+관절위치 시계열 수집)
+    train_tactile_classifier.py (신규: 수집한 시계열로 9-way 물체 분류 CNN 학습)
+    data/
+      tactile_dataset.npz         (3,230 에피소드, (N,500,32) 패딩된 배열 — tactile 16ch + joint_pos 16ch)
+      sample_traces.json          (대시보드용으로 뽑은 물체별 대표 샘플 1개씩)
+      tactile_classifier_dashboard.html       (촉각+관절 결과 대시보드, 메인)
+      joint_pos_classifier_dashboard.html     (관절위치만 ablation 대시보드)
+      tactile_only_classifier_dashboard.html  (촉각만 ablation 대시보드)
+  install.md            (원본 세팅 안내 — WSL robosyn 환경엔 이미 다 설치되어 있어 참고용)
 ```
 
 ## 논문 스펙 대비 수정한 항목 (파일: `isaacgymenvs/tasks/allegro_arm_morb_axis.py`, `cfg/task/AllegroArmMOAR.yaml`)
 
 원본 `in-hand-rotation`의 `partial_stack` 구현은 논문의 대부분(16개 FSR 센서 배치, finite-difference 회전각 보상, EMA 액션 스무딩 η=0.8, 10Hz 제어, 4-step 히스토리 스택, PPO 하이퍼파라미터)을 이미 정확히 따르고 있었지만, 아래 수치/공식들은 이후 다른 실험(Robot Synesthesia)에 맞춰 바뀐 상태였고, 이 폴더에서 논문 값으로 되돌렸습니다:
 
-| 항목 | 원본 코드 | 이 폴더 | 
+| 항목 | 원본 코드 | 이 폴더 |
 |---|---|---|
 | 접촉 센서 threshold | 랜덤 [1.0, 2.0]N | 랜덤 [0.005, 0.015]N (논문 0.01N 근사) |
 | PD gain 랜덤화 | P×[0.30,0.60], D×[0.75,1.05] | P×[0.66,1.33], D×[0.80,1.20] |
@@ -52,15 +81,46 @@ rotating-without-seeing/
 | Torque 보상 | `-Σ τ²` (제곱) | `-‖τ‖` (L2 norm, 논문과 일치) |
 | numEnvs / minibatch | 16 / 32 (yaml 기본값) | 8192 / 16384 (논문 값 고정) |
 
-새 yaml 키(`sensorThreshLow`, `objectFrictionLow/High`, `handFrictionLow/High`, `objectScaleLow/High`, `pGainMultLow/High`, `dGainMultLow/High`, `jointObsNoise`, `torqueRewardNorm`, `useForceProbRange`)로 위 값들을 조정 가능하게 만들어 뒀습니다.
+새 yaml 키(`sensorThreshLow`, `objectFrictionLow/High`, `handFrictionLow/High`, `objectScaleLow/High`, `pGainMultLow/High`, `dGainMultLow/High`, `jointObsNoise`, `torqueRewardNorm`, `useForceProbRange`, `deterministicObjectAssign` — 마지막 것은 이번 세션에 추가, 아래 참고)로 위 값들을 조정 가능하게 만들어 뒀습니다.
 
-## ⚠️ 반드시 알아야 할 함정: `ablation_mode`
+## ⚠️ 반드시 알아야 할 함정들
+
+### 1. `ablation_mode` (기존, 여전히 유효)
 
 **`cfg/task/AllegroArmMOAR.yaml`의 `ablation_mode`를 절대 `"multi-modality"`나 `"no-tactile"`로 바꾸지 마세요.**
 
-원본 코드에는 `ablation_mode in ["no-tactile", "multi-modality"]`일 때 `isaacgymenvs/tasks/base/vec_task.py`의 `step()`/`reset()`/`reset_done()`이 **매 스텝 관측 버퍼에서 16차원 촉각 신호를 통째로 잘라내는** 로직이 있고, 태스크 파일도 이에 맞춰 `numObservations`를 하드코딩된 276으로 덮어씁니다(`allegro_arm_morb_axis.py:382-383`). 원본 yaml 기본값이 정확히 `ablation_mode: multi-modality`였기 때문에, 고치지 않았다면 **"vision을 안 쓰는 정책"이 아니라 "vision도 촉각도 다 못 보는 정책"이 학습될 뻔했습니다.** 크래시 없이 조용히 잘못된(목적에 안 맞는) 정책이 학습되는 종류의 버그라 발견하기 어렵습니다.
+원본 코드에는 `ablation_mode in ["no-tactile", "multi-modality"]`일 때 `isaacgymenvs/tasks/base/vec_task.py`의 `step()`/`reset()`/`reset_done()`이 **매 스텝 관측 버퍼에서 16차원 촉각 신호를 통째로 잘라내는** 로직이 있고, 태스크 파일도 이에 맞춰 `numObservations`를 하드코딩된 276으로 덮어씁니다(`allegro_arm_morb_axis.py:382-383` 부근). 원본 yaml 기본값이 정확히 `ablation_mode: multi-modality`였기 때문에, 고치지 않았다면 **"vision을 안 쓰는 정책"이 아니라 "vision도 촉각도 다 못 보는 정책"이 학습될 뻔했습니다.**
 
-지금은 `ablation_mode: no-pc`로 고쳐뒀고, 이 값은 코드 어디에서도 특별 취급되지 않는 "안전한 기본" 값입니다(grep으로 전체 확인함). 이 필드를 건드릴 일이 있으면 반드시 `"no-tactile"`/`"multi-modality"`를 피하세요.
+지금은 `ablation_mode: no-pc`로 고쳐뒀고, 이 값은 코드 어디에서도 특별 취급되지 않는 "안전한 기본" 값입니다. 실제 학습 로그로 관측 차원이 340(276 아님)임을 재확인했습니다.
+
+### 2. 스크립트 CRLF (신규)
+
+`scripts/train_z_axis.sh`가 Windows 도구로 편집되어 CRLF 줄바꿈으로 저장되면서 `${array[@]:1:$len}` 라인이 WSL bash에서 `syntax error: invalid arithmetic operator`로 죽는 버그가 있었습니다. `sed -i 's/\r$//'`로 LF 정규화해서 고쳤습니다. **Windows 쪽에서 `.sh` 파일을 다시 저장하면 재발할 수 있으니**, 스크립트가 원인불명으로 실행 자체가 안 되면 `file <script>.sh`로 `CRLF line terminators` 여부부터 확인하세요.
+
+### 3. 스모크 테스트 시 `minibatch_size`도 같이 줄여야 함 (신규)
+
+`numEnvs`만 줄이고 (예: `task.env.numEnvs=64`) `minibatch_size`(기본 16384, 8192-env 본 학습용 고정값)를 그대로 두면 `batch_size`(numEnvs×horizon_length)가 `minibatch_size`로 나누어떨어지지 않아 `AssertionError: assert(self.batch_size % self.minibatch_size == 0)`로 학습 시작 전에 즉시 죽습니다. 반드시 같이 낮추세요:
+```bash
+bash scripts/train_z_axis.sh 0 task.env.numEnvs=64 \
+  train.params.config.minibatch_size=512 \
+  train.params.config.central_value_config.minibatch_size=512
+```
+
+### 4. `deterministicObjectAssign` (신규 기능, 함정 아님이지만 알아둘 것)
+
+물체 배정은 원래 env 생성 시(`_create_envs`) 딱 한 번 랜덤으로 뽑히고 `reset_idx`에서 절대 안 바뀝니다(즉 같은 env 슬롯은 프로세스 수명 내내 같은 물체). 시각화/데이터 수집처럼 물체가 골고루 나오길 원할 때를 위해 `task.env.deterministicObjectAssign=True`를 주면 `obj_class_indice = i % len(used_training_objects)`로 라운드로빈 배정됩니다(`allegro_arm_morb_axis.py`, `_create_envs` 안, `obj_class_indice` 대입부). 기본값 `False`라 본 학습(8192 env)에는 전혀 영향 없습니다.
+
+### 5. `rl_games`의 `PpoPlayerContinuousCollect` (player_collect=True)는 쓰지 말 것 (신규)
+
+이 저장소 로컬 `rl_games` 포크에 반쯤 만들어진 데이터 수집용 플레이어(`rl_games/algos_torch/players.py:338`, `train.params.config.player_collect: True`로 활성화)가 있는데, 기본 설정(`debug_viz`/`force_debug` 꺼짐)에서 `get_env_internal_info(env, 'qpos'/'target')`가 빈 리스트에 `.detach()`를 호출해 크래시합니다. 게다가 전체 rollout을 다 메모리에 쌓은 뒤 처리해서 numEnvs가 크면 비효율적입니다. **`tools/collect_tactile_data.py`는 이걸 안 쓰고 직접 커스텀 롤아웃 루프를 짰습니다** — 촉각 데이터 수집 외 다른 용도로도 이 패턴(아래)을 재사용하면 됩니다.
+
+### 6. rl_games player로 커스텀 롤아웃 루프를 짤 때: `get_batch_size()` 빼먹지 말 것 (신규)
+
+`player.run()`을 안 쓰고 직접 `player.get_action(obs, ...)` / `player.env_step(...)`를 부르는 코드를 짜면, `player.run()` 내부에서만 호출되는 `self.get_batch_size(obses, batch_size)`가 실행이 안 되어 `has_batch_dimension`이 `False`로 남습니다. 그러면 `get_action`이 `(num_envs, obs_dim)` 텐서를 배치 없는 단일 관측으로 오인해서 엉뚱하게 `unsqueeze`해버리고, 네트워크 forward에서 `mat1 and mat2 shapes cannot be multiplied` 같은 에러가 납니다. `env_reset` 직후 반드시:
+```python
+obses = player.env_reset(env)
+player.get_batch_size(obses, 1)   # 이 줄이 없으면 위 에러 발생
+```
 
 ## 학습용 물체 (9개, `objSet: "C"`)
 
@@ -90,38 +150,90 @@ rotating-without-seeing/
 
 **`ball` 키는 이 9개와 무관**하니 헷갈리지 마세요 — baoding balls 과제 전용의 별도 단일 구 오브젝트입니다(건드리지 않음).
 
-`cylinder_3`(정십각기둥)은 볼록(convex) 도형이라 충돌 메시가 시각 메시와 동일합니다. `tools/generate_new_objects.py`를 다시 실행하면 동일한 절차로 재생성됩니다(단, 삭제된 `block_3`/`ball_1~4`도 함께 재생성되므로 재실행 후 `tools/relabel_objects_2.py`를 다시 돌리거나 수동으로 정리가 필요합니다).
-
 ## 초기 상태 랜덤화
 
 - **물체 초기 위치**: ±1.5cm 랜덤 (`resetPositionNoise`)
-- **물체 초기 회전(yaw)**: `useInitRandomRotation: True`로 켜져 있어 z축(회전축) 기준 [-π,π] 완전 랜덤. **단, roll/pitch는 랜덤화 안 됨** — 물체는 항상 손바닥 위에 "누운" 기본 자세를 유지한 채 z축으로만 랜덤 회전한 상태로 스폰됩니다. 완전 3D 임의 자세가 필요하면 `allegro_arm_morb_axis.py`의 `randomize_rotation(...)` 호출부(else 분기, `reset_idx` 안)를 직접 고쳐야 합니다.
-- **손 관절 초기 자세**: 랜덤화 **안 됨** (매 에피소드 고정된 기본 자세로 리셋). `resetDofPosRandomInterval`/`resetDofVelRandomInterval` yaml 값은 죽은 설정이라 실제로 반영 안 됩니다.
+- **물체 초기 회전(yaw)**: `useInitRandomRotation: True`로 켜져 있어 z축(회전축) 기준 [-π,π] 완전 랜덤. **단, roll/pitch는 랜덤화 안 됨**.
+- **손 관절 초기 자세**: 랜덤화 **안 됨** (매 에피소드 고정된 기본 자세로 리셋).
 
 ## 활성 Domain Randomization 요약
 
-물리(질량 0.2~0.6kg, 손/물체 마찰 각각 0.3~3.0, PD gain, 위치 ±1.5cm, 스케일 0.95~1.05) + 랜덤 외력(스케일 0.2, 확률 [0.2,0.25], 0.1초마다 0.99배 감쇠) + 센서(threshold [0.005,0.015]N, 드롭율 10%, lag 25%) + 관측/액션 노이즈(관절 ±0.05, 액션 ±0.06, relScale ±5%) + 물체 초기 yaw. 자세한 항목별 설명은 이전 대화(메모리에는 없고 이 세션 히스토리에 있음)에 정리되어 있으니, 필요하면 이 README보다 대화 로그를 참고하세요.
+물리(질량 0.2~0.6kg, 손/물체 마찰 각각 0.3~3.0, PD gain, 위치 ±1.5cm, 스케일 0.95~1.05) + 랜덤 외력(스케일 0.2, 확률 [0.2,0.25], 0.1초마다 0.99배 감쇠) + 센서(threshold [0.005,0.015]N, 드롭율 10%, lag 25%) + 관측/액션 노이즈(관절 ±0.05, 액션 ±0.06, relScale ±5%) + 물체 초기 yaw.
 
-## 실행 방법 (GPU 필요, 이 PC에서는 미실행)
+## wandb 물체별 reward 로깅
+
+이미 구현되어 있습니다 (이번 세션 이전부터):
+- `allegro_arm_morb_axis.py`: `episode_reward_buf`/`episode_fwd_theta_buf`(env별 누적치), `_pending_obj_stats`(에피소드 종료 시 물체 이름별 기록)
+- `isaacgymenvs/utils/rlgames_utils.py`의 `RLGPUAlgoObserver.after_print_stats`: 매 PPO epoch마다 `_pending_obj_stats`를 집계해 `PerObject/{obj}/rotation_count|episode_length|episode_reward`를 tensorboard writer로 기록 → `train.py`의 `wandb.init(sync_tensorboard=True)` 덕분에 별도 `wandb.log()` 없이 자동으로 wandb에도 반영됨. 콘솔에도 `[PerObject reward] epoch N | block_1: ... | ...` 형태로 출력.
+- 이번 세션에 고친 것: 이 로깅 블록을 감싸던 `except Exception: pass`가 에러를 완전히 은폐하던 걸, 최초 1회만 경고를 출력하도록 수정(`self._per_object_log_warned` 플래그). 학습 자체를 죽이지 않기 위해 try/except 자체는 유지.
+
+## 본 학습 결과
+
+`bash scripts/train_z_axis.sh 0` (numEnvs=8192, minibatch_size=16384, 논문 스펙 고정값)로 **20,100 epoch까지 정상 완주**했습니다.
+
+- wandb: `isaacgymenvs` 프로젝트, run `rws2_2026-08-03_12-09-19` (`https://wandb.ai/jhyang321-seoul-national-university/isaacgymenvs/runs/b5ic6zpy`)
+- 체크포인트 디렉터리: `runs/z-axis-touch-only/z-axis-touch-onlyS1.0_C0.0_M0.02026-08-03_12-09-19-83810/nn/`
+  - `last_z-axis-touch-only_ep_<N>_rew_<R>.pth` — 100 epoch마다 저장되는 스냅샷
+  - **`z-axis-touch-only.pth`** — rl_games가 rolling mean reward 갱신될 때마다 덮어쓰는 **best** 체크포인트. 마지막 갱신은 epoch 19927, reward **974.54**로, 100-epoch 단위 스냅샷 중 최고치(902.71, epoch 15500)나 마지막 체크포인트(870.41, epoch 20100)보다도 높습니다. **평균 reward 기준으로는 이 파일을 써야 합니다.**
+- **"평균 reward가 가장 높은 policy"를 원하면 위 `z-axis-touch-only.pth`를 쓰세요.** "최솟값이 가장 높은" 기준(물체별 최악 케이스가 그나마 나은 policy)은 별도로 뽑지 않았습니다 — 물체마다 reward 스케일 자체가 달라(원기둥류가 원래 더 높음) 최솟값 기준은 오해를 부를 수 있다는 논의 후 평균 기준으로 확정했습니다.
+- `runs/`는 gitignored라 이 워킹 디렉터리에만 존재합니다. **재현하려면 재학습(수일 소요)이 필요하니, 이 체크포인트 파일이 필요하면 별도로 백업해두는 걸 권합니다.**
+
+### 학습된 policy 시각화
 
 ```bash
-cd rotating-without-seeing
-bash scripts/train_z_axis.sh 0                       # GPU 0번 사용, 본 학습 (numEnvs=8192)
-bash scripts/train_z_axis.sh 0 task.env.numEnvs=64   # 빠른 스모크 테스트용 소규모 실행
+wsl.exe -e bash -lc "cd /mnt/c/jaehong_yang/rotating-without-seeing && source ~/miniconda3/etc/profile.d/conda.sh && conda activate robosyn && python isaacgymenvs/train.py test=True headless=False task.env.numEnvs=9 task.env.deterministicObjectAssign=True checkpoint='runs/z-axis-touch-only/z-axis-touch-onlyS1.0_C0.0_M0.02026-08-03_12-09-19-83810/nn/z-axis-touch-only.pth'"
 ```
+`numEnvs=9` + `deterministicObjectAssign=True`로 9개 env에 물체가 하나씩 순서대로(block_1~5, cylinder_1~4) 배정되어, 9개 물체가 동시에 회전하는 걸 한 창에서 볼 수 있습니다. Windows 데스크톱에 "Isaac Gym (Ubuntu-24.04)" 창이 뜹니다 (위 [실행 환경](#실행-환경-wsl2) 참고).
+
+## 촉각 기반 물체 분류
+
+**목표**: 위 best 체크포인트로 각 물체를 회전시키면서 policy가 실제로 받는 센서값(정책 자신은 물체 정체성을 절대 모름 — `object_one_hot_vector`는 critic 전용 `states_buf`에만 쓰이고 actor 관측 `last_obs_buf`/`obs_buf`에는 안 들어간다는 걸 코드로 확인함)의 시계열만으로, 9개 물체 중 무엇인지 맞히는 별도 CNN 분류기를 학습. 형상 재구성 아님, 분류만.
+
+### 파이프라인
+
+1. **`tools/collect_tactile_data.py`** — best 체크포인트로 결정론적(`is_deterministic=True`) 추론 롤아웃을 돌리면서, 매 control step `sensed_contacts`(촉각 16채널, policy가 실제로 보는 노이즈/threshold/lag 적용된 값)와 `last_obs_buf[:, 6:22]`(관절위치 16채널)를 읽어 env별로 버퍼링하다가, `reset_buf[e]==1`(에피소드 종료) 시점에 완성된 (T, 32) 시퀀스를 물체 라벨(`object_class_indices[e]`, env 생성 시 고정)과 함께 저장.
+   - `task.env.deterministicObjectAssign=True`로 물체를 라운드로빈 배정(위 함정 #4) → 클래스 균형 보장.
+   - 기본값: `numEnvs=900`(클래스당 100), `target_episodes_per_class=300`, `max_control_steps=2000`(안전 상한).
+   - 결과: `tools/data/tactile_dataset.npz` — `tactile: (N, 500, 32) float32`(500=`max_episode_length`, 부족한 길이는 뒤쪽 0-padding), `lengths: (N,)`, `labels: (N,)`, `label_names`, `channels`.
+   - 실행 예:
+     ```bash
+     python tools/collect_tactile_data.py \
+       checkpoint='runs/z-axis-touch-only/z-axis-touch-onlyS1.0_C0.0_M0.02026-08-03_12-09-19-83810/nn/z-axis-touch-only.pth' \
+       task.env.numEnvs=900 +target_episodes_per_class=300 +max_control_steps=2000 \
+       +out_path=tools/data/tactile_dataset.npz
+     ```
+   - 실제 수집 결과: **3,230 에피소드**, 클래스당 310~444개(불균형은 조기종료 에피소드가 섞여서; 목표 300 도달 후 정지하다 보니 다른 클래스는 그 시점까지 더 쌓인 것). 에피소드 길이는 물체마다 편차 큼(block_3/block_5가 짧은 편 — 기존 학습 reward 패턴과 일치).
+
+2. **`tools/train_tactile_classifier.py`** — 위 npz를 로드해 라벨 층화 70/15/15 분할(seed 고정이라 재실행해도 같은 분할) 후, masked-average-pooling 1D-CNN(Conv1d 32→64→128, 커널 5/5/3, 전부 `padding="same"`이라 시간축 안 줄어듦 → 패딩 구간을 정확히 제외한 마스크 평균 풀링 가능) + FC(128→64→9)로 50 epoch 학습.
+   - `--channels` 옵션으로 저장된 채널 중 일부만 골라 학습 가능 (예: `--channels joint_pos`, `--channels tactile`, 기본값은 파일에 저장된 전체). `CHANNEL_WIDTHS = {"tactile": 16, "joint_pos": 16}`가 `collect_tactile_data.py`와 동일해야 함 (import는 안 함 — `collect_tactile_data.py`가 `import isaacgym`을 torch보다 먼저 해야 하는 제약이 있어서, 순수 학습 스크립트에 그 무거운 의존성을 끌어오지 않으려고 일부러 값만 복제해뒀습니다).
+   - 실행 예: `python tools/train_tactile_classifier.py --data tools/data/tactile_dataset.npz --epochs 50`
+
+### 결과 (3가지 채널 조합으로 각각 학습 — 동일 데이터/분할/시드, 채널만 다름)
+
+| 입력 채널 | 테스트 정확도 | 가장 약한 물체 |
+|---|---|---|
+| 촉각 16채널만 (`--channels tactile`) | **82.7%** | cylinder_1 61.7% (cylinder_3와 혼동) |
+| 관절위치 16채널만 (`--channels joint_pos`) | **87.8%** | cylinder_1 68.1%, cylinder_3 65.2% |
+| 촉각+관절 32채널 (기본값) | **90.3%** | block_3 74.6% (block_5와 혼동) |
+
+(랜덤 베이스라인 = 1/9 = 11.1%.)
+
+**핵심 발견**: 정책 자체는 촉각 전용으로 학습됐는데도, **촉각 단독이 세 조합 중 가장 낮은 분류 정확도**를 냄 — 관절위치(손가락이 어떤 자세로 안착하는지)가 형상 정보를 더 많이 담고 있었습니다. 게다가 세 ablation이 **서로 다른 물체 쌍에서 실패**합니다: 촉각+관절에서 헷갈리는 block_3/block_5 쌍은 관절만/촉각만 버전에서는 오히려 잘 맞히고, 반대로 촉각만·관절만 둘 다에서 헷갈리는 cylinder_1/cylinder_3 쌍은 둘을 합치면 잘 구분됩니다. 즉 촉각과 관절위치는 서로의 부분집합이 아니라 **상호보완적인, 겹치지 않는 형상 단서**를 담고 있다는 뜻입니다.
+
+각 ablation의 confusion matrix, 학습 곡선, 물체별 원본 센서 시계열(실제 히트맵)은 `tools/data/*.html` 3개 파일에 그대로 들어있습니다 (Claude Artifact로도 게시했지만 그 URL은 이 대화 세션·사용자 계정에 종속적이라 다른 환경에서는 안 열릴 수 있음 — **재현 가능한 원본은 이 HTML 파일들과 위 두 스크립트입니다**). 브라우저로 그냥 열면 됩니다, 별도 서버 필요 없음.
 
 ## 지금까지 확인한 것 / 다음에 확인해야 할 것
 
-**정적으로 확인 완료:**
-- `isaacgymenvs/tasks/allegro_arm_morb_axis.py` 문법 검사(`py_compile`) 통과
-- `cfg/task/AllegroArmMOAR.yaml`, `cfg/train/AllegroArmMOARPPO.yaml` yaml 파싱 통과
-- `object_sets["C"]`(현재 학습용 9개)의 모든 URDF가 참조하는 mesh 파일 존재 확인, `asset_files_dict` 키 일치 확인
-- `num_training_objects`/one-hot 벡터/`numStates`가 물체 개수 변화(16→22→17)에 따라 동적으로 스케일됨을 코드로 확인 (하드코딩된 개수 가정 없음)
-- `ablation_mode` 관련 촉각-제거 버그 발견 및 수정
-- 물체 목록 2차 정리(block_3/ball_1~4 삭제, else_1/else_5→block_3/block_5 승격, 나머지 재정렬) 시 파일명 체이닝 과정에서 삭제 로직 버그로 else_* 파일이 잘못 지워지는 사고가 있었으나, git 커밋으로 복구 후 3단계(임시 이름 경유) 방식으로 안전하게 재작업 완료 — 최종 상태 재검증됨
+**확인 완료 (이번 세션, 실제 GPU 실행으로):**
+- `numEnvs=64` 스모크 테스트 → 관측 차원 340(276 아님) 확인, `ablation_mode` 수정이 실제로 반영됨을 재확인
+- `numEnvs=8192` 본 학습 20,100 epoch 완주, wandb에 물체별 reward 정상 기록
+- 접촉 신호가 항상 0/1로 고정되지 않고 실제로 반응함 (물체별 reward가 유의미하게 갈리는 것으로 간접 확인 — block_3/block_5가 낮고 cylinder류가 높은 일관된 패턴)
+- 9개 물체 간 reward 편차: cylinder류(1000~1300대)가 block류(400~1200대)보다 대체로 높음, block_3/block_5가 특히 낮은 편 — 학습 로그와 촉각 분류 confusion 패턴 둘 다에서 일관되게 나타남
+- 학습된 policy로 9개 물체 동시 시각화 (뷰어 창 정상 동작)
+- 촉각+관절/관절만/촉각만 3가지 CNN 분류기 학습 및 confusion matrix 분석 완료
 
-**GPU 환경에서 사람이 확인해야 할 것:**
-1. `bash scripts/train_z_axis.sh 0 task.env.numEnvs=64`로 소규모 스모크 테스트 — 크래시 없이 기동하는지, 관측 차원이 실제로 340인지(276이 아닌지) 로그로 확인
-2. 접촉 신호(`contacts`)가 실제로 0.01N 근방에서 반응하는지, 항상 0이거나 항상 1이 아닌지 확인
-3. `numEnvs=8192`로 본 학습을 돌려 Cumulative Rotation Reward가 논문 Fig.6처럼 우상향하는지 확인
-4. 9개 물체(block_1~5, cylinder_1~4) 간 reward 편차(특히 새로 승격된 `block_3`/`block_5`, 그리고 유지되는 `cylinder_3`)가 고르게 나오는지 확인 — 이전에 삭제된 계단형 block_3/ball_1~4는 reward가 확연히 낮았던 이력이 있어 참고할 것. else_1~8은 자산으로는 남아있지만 이번부터 학습에서 완전히 제외됨(범용성 포기, 9개 물체에만 집중)
+**아직 안 한 것 (다음 에이전트가 이어갈 수 있는 지점):**
+- 논문 Fig.6과 정량적으로 비교하는 학습 곡선 분석은 안 함 (wandb 대시보드에서 직접 확인 가능)
+- else_1~8, 삭제된 계단형 block_3/ball_1~4를 재학습에 포함시켰을 때 결과가 어떻게 달라지는지는 미확인
+- 분류기 정확도를 precision/F1까지 확장하거나, prev_action 등 다른 관측 채널을 추가했을 때 개선되는지는 미확인
+- x축/y축 회전이나 distillation(학생 정책) 등 원 논문의 다른 부분은 이 폴더 범위 밖 (README 최상단 "배경" 참고)

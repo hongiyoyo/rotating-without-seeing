@@ -1,0 +1,20 @@
+# Force LF for text/source files regardless of what OS/editor last touched them.
+# This repo is edited on Windows but executed in WSL/Linux -- CRLF drift here has
+# already broken scripts/train_z_axis.sh once (bash choked on ${array[@]:1:$len}).
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.md   text eol=lf
+*.urdf text eol=lf
+
+# Mesh/binary assets: never run through line-ending filtering.
+*.obj -text
+*.stl -text
+*.STL -text
+*.pth binary
+*.npz binary
+*.png binary
+*.jpg binary

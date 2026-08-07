@@ -53,6 +53,10 @@ env:
   envSpacing: 0.75
   episodeLength: 500
   enableDebugVis: False
+  # True: object assignment is round-robin (env i -> object i % N) instead of random -- used for
+  # balanced data collection / visualization. Does not affect the actor's observations (object
+  # identity is never in last_obs_buf), only which physical object each env slot gets.
+  deterministicObjectAssign: False
   aggregateMode: 1
   # Contact sensor detection threshold, randomized per-episode in [sensorThreshLow, sensorThreshLow+sensorThresh] N.
   # Paper (Rotating without Seeing) uses a fixed 0.01N; here we keep a small randomized band centered on it.
