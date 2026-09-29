@@ -2,7 +2,7 @@
 # Touch-only (no vision) z-axis in-hand rotation teacher policy training.
 # Run from the repo root: bash scripts/train_z_axis.sh <GPU_ID> [extra hydra overrides...]
 #
-# All the scenario-specific settings (objSet=C, axis=z, observationType=partial_stack,
+# All the scenario-specific settings (objSet=set16, axis=z, observationType=partial_stack,
 # sensor=thick, numEnvs=8192, minibatch_size=16384, and the paper-fidelity domain
 # randomization/reward values) are already baked into the defaults of
 # isaacgymenvs/cfg/task/AllegroArmMOAR.yaml and isaacgymenvs/cfg/train/AllegroArmMOARPPO.yaml,

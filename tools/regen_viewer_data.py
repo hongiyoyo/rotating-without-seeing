@@ -1,13 +1,9 @@
 """
-One-off script: regenerate the embedded MESH_DATA / CATALOG blobs inside
-object_viewer.html for the current 9-object training set. ball_1..4 and the
-original procedurally-generated stair block_3 were removed from training
-(pass 2); else_1/else_5 were promoted to block_3/block_5 and the rest of the
-else_* pool renumbered to else_1..8 (pass 2); else_1..8 were then excluded
-from training entirely (pass 3) -- they still exist as valid assets under
-assets/urdf/objects/else_*.urdf but are intentionally left out of this
-viewer's catalog since it mirrors the actual training roster (object_sets
-["C"] in allegro_arm_morb_axis.py), not the full assets folder.
+Regenerate the embedded MESH_DATA / CATALOG blobs inside object_viewer.html
+for the full 16-object original in-hand-rotation set (object_sets["set16"]
+in allegro_arm_morb_axis.py). The earlier renamed/pruned 9-object roster
+(block_N/cylinder_N/else_N) has been reverted entirely -- the objects are
+back under their original set_objN_* names and asset files.
 """
 import json
 import re
@@ -17,15 +13,22 @@ SCALE = 0.03
 
 # key -> (display name, category, numeric id badge)
 CATALOG_INFO = [
-    ("block_1", "Regular Block", "Blocks", 1),
-    ("block_2", "Irregular Block · Time", "Blocks", 2),
-    ("block_3", "Block", "Blocks", 3),
-    ("block_4", "Block Corner", "Blocks", 4),
-    ("block_5", "Block", "Blocks", 5),
-    ("cylinder_1", "Cylinder", "Cylinders", 1),
-    ("cylinder_2", "Cylinder Axis", "Cylinders", 2),
-    ("cylinder_3", "Decagon Prism", "Cylinders", 3),
-    ("cylinder_4", "Cylinder Corner", "Cylinders", 4),
+    ("set_obj1_regular_block", "Regular Block", "Blocks", 1),
+    ("set_obj2_block", "Block", "Blocks", 2),
+    ("set_obj3_block", "Block", "Blocks", 3),
+    ("set_obj4_block", "Block", "Blocks", 4),
+    ("set_obj5_block", "Block", "Blocks", 5),
+    ("set_obj6_block_corner", "Block Corner", "Blocks", 6),
+    ("set_obj7_block", "Block", "Blocks", 7),
+    ("set_obj8_short_block", "Short Block", "Blocks", 8),
+    ("set_obj9_thin_block", "Thin Block", "Blocks", 9),
+    ("set_obj10_thin_block_corner", "Thin Block Corner", "Blocks", 10),
+    ("set_obj11_cylinder", "Cylinder", "Cylinders", 11),
+    ("set_obj12_cylinder_corner", "Cylinder Corner", "Cylinders", 12),
+    ("set_obj13_irregular_block", "Irregular Block", "Blocks", 13),
+    ("set_obj14_irregular_block_cross", "Irregular Block · Cross", "Blocks", 14),
+    ("set_obj15_irregular_block_time", "Irregular Block · Time", "Blocks", 15),
+    ("set_obj16_cylinder_axis", "Cylinder Axis", "Cylinders", 16),
 ]
 
 

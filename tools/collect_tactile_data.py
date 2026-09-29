@@ -5,14 +5,14 @@
 # perceives, labeled with the (sim-only) ground-truth object identity. The policy
 # never observes object identity (see README / task file), so these tactile
 # responses are purely shape-driven -- this dataset is meant to train a downstream
-# CNN that classifies which of the 9 training objects is being manipulated, from
-# touch alone.
+# CNN that classifies which of the training objects (object_sets["set16"], 16 of
+# them) is being manipulated, from touch alone.
 #
 # Usage (from the repo root, in the project's conda env):
 #   python tools/collect_tactile_data.py checkpoint=<path/to/checkpoint.pth>
 #
 # Useful overrides:
-#   task.env.numEnvs=900                  envs run in parallel (multiple of 9 keeps
+#   task.env.numEnvs=1600                 envs run in parallel (multiple of 16 keeps
 #                                          round-robin class balance exact)
 #   +target_episodes_per_class=300        stop once every class has this many episodes
 #   +max_control_steps=2000               hard cap on total env.step() calls

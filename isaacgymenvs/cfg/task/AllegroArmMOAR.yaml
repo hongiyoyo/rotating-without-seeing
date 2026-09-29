@@ -37,7 +37,7 @@ env:
   rewardType: "finger"
   sensor: "thick"
   objInit: "new"
-  objSet: "C"
+  objSet: "set16"
   pc_category: "mug"
   skill_step: 500
   spin_coef: 1.0
@@ -76,7 +76,7 @@ env:
   objectFrictionHigh: 3.0
   handFrictionLow: 0.3
   handFrictionHigh: 3.0
-  # Object scale randomization range for the "C" object set (paper: U(0.95, 1.05))
+  # Object scale randomization range for the default ("set16") object set (paper: U(0.95, 1.05))
   objectScaleLow: 0.95
   objectScaleHigh: 1.05
   # PD gain randomization multipliers (paper: P x U(0.66, 1.33), D x U(0.80, 1.20))
@@ -90,6 +90,23 @@ env:
   torqueRewardNorm: "l2"
   # Use the per-env log-uniform forceProbRange to gate random-force application instead of a flat scalar
   useForceProbRange: True
+
+  # Progressive domain randomization -- see allegro_arm_morb_axis.py's
+  # _dr_ramp_frac()/_apply_dr_ramp(). Enabled by default for the 16-object
+  # ("set16") training run: every DR range/magnitude above (friction, mass,
+  # PD gain multipliers, sensor threshold/noise/lag, joint obs noise, reset
+  # position noise, random force scale/probability) starts shrunk toward "no
+  # randomization" at drRampStartFrac and linearly widens back out to the
+  # values configured above over drRampSteps control steps (pre_physics_step
+  # calls, i.e. env.step() calls -- NOT PPO epochs; cfg/train's
+  # horizon_length=16 steps/epoch x max_epochs=20100 = 321,600 total steps
+  # for the full paper-spec run, so 50000 ramps DR up over roughly the first
+  # ~15% of training). Object scale is not covered (it's baked in at env
+  # creation, before any ramp has run). Set to False to fully restore the
+  # old always-on-full-DR behavior.
+  drRampEnable: True
+  drRampStartFrac: 0.0
+  drRampSteps: 50000
 
   force_debug: False
   numTestEnvs: 16
@@ -147,7 +164,7 @@ env:
   # Note: assetFileName/Block/Egg/Pen below are legacy keys not actually read by
   # allegro_arm_morb_axis.py (only asset.assetRoot is read there). The hand/object
   # URDFs actually used are selected via robot_asset_files_dict["thick"] and
-  # object_sets["C"] in the task code itself. Kept here (pointed at real files in
+  # object_sets[objSet] in the task code itself. Kept here (pointed at real files in
   # this pruned repo) only for documentation purposes.
   asset:
     assetFileName: "urdf/xarm6/xarm6_allegro_right_fsr_2023_thin.urdf"

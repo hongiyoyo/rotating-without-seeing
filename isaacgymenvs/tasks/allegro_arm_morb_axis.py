@@ -110,7 +110,7 @@ class AllegroArmMOAR(VecTask):
         self.sensor_thresh_low = self.cfg["env"].get("sensorThreshLow", 1.0)
         self.sensor_noise = self.cfg["env"].get("sensorNoise", 0.2)
 
-        # Object scale randomization range for the default ("C") object set.
+        # Object scale randomization range for the default ("set16") object set.
         self.object_scale_low = self.cfg["env"].get("objectScaleLow", 0.95)
         self.object_scale_high = self.cfg["env"].get("objectScaleHigh", 1.1)
 
@@ -162,6 +162,21 @@ class AllegroArmMOAR(VecTask):
         self.finger_coef = self.cfg['env'].get('finger_coef', 0.1)
         self.latency = self.cfg['env'].get("latency", 0.25)
 
+        # --- Progressive domain randomization (enabled by default, see yaml) ---
+        # When enabled, every DR magnitude parsed above (friction/mass ranges,
+        # PD gain multiplier ranges, sensor threshold/noise/lag, joint obs
+        # noise, position noise, random force scale/probability) starts
+        # shrunk toward "no randomization" and linearly widens back out to
+        # the fully-configured values over drRampSteps control steps. See
+        # _dr_ramp_frac()/_apply_dr_ramp(), called once per pre_physics_step.
+        # Object scale is NOT ramped -- it's baked into each actor at env
+        # creation time (_create_envs, before any ramping has happened) and
+        # isn't re-sampled per reset like the other DR parameters are.
+        self.dr_ramp_enable = self.cfg["env"].get("drRampEnable", False)
+        self.dr_ramp_start_frac = self.cfg["env"].get("drRampStartFrac", 0.0)
+        self.dr_ramp_steps = self.cfg["env"].get("drRampSteps", 5000)
+        self.dr_step_count = 0
+
         self.use_initial_rotation = self.cfg['env'].get('useInitRandomRotation', False)
         self.torque_control = self.cfg["env"].get("torqueControl", True)
         self.skill_step = self.cfg["env"].get("skill_step", 50)
@@ -173,57 +188,45 @@ class AllegroArmMOAR(VecTask):
 
         self.asset_files_dict = {
             "ball": "urdf/objects/ball.urdf",
-            # Object set "C" history (two relabeling passes):
-            # Pass 1 (renamed from the original set_objN_* names, then
-            # renumbered to a sequential block_1..4 / cylinder_1..4 scheme;
-            # block_3/cylinder_3 were brand-new procedurally-generated
-            # objects at that point, not renames):
-            #   set_obj1_regular_block          -> block_1
-            #   set_obj15_irregular_block_time  -> block_2
-            #   set_obj6_block_corner           -> block_4
-            #   set_obj11_cylinder              -> cylinder_1
-            #   set_obj16_cylinder_axis         -> cylinder_2
-            #   set_obj12_cylinder_corner       -> cylinder_4
-            #   set_obj2_block..set_obj14_*     -> else_1..else_10
-            # Pass 2 (this pass): the original procedurally-generated block_3
-            # (an L-shaped "stair" cube-minus-a-quadrant) and all 4 ball_*
-            # objects (sphere/dodecahedron/icosahedron/ellipsoid) were
-            # REMOVED from training entirely (they scored poorly and are no
-            # longer part of the set). else_1 was promoted to a new "block_3"
-            # (a plain block, not the stair shape) and else_5 promoted to
-            # "block_5"; the remaining else_2,3,4,6,7,8,9,10 were renumbered
-            # sequentially down to else_1..else_8. cylinder_3 (the decagon
-            # prism) was NOT touched by pass 2 and remains unchanged.
-            "block_1": "urdf/objects/block_1.urdf",
-            "block_2": "urdf/objects/block_2.urdf",
-            "block_3": "urdf/objects/block_3.urdf",
-            "block_4": "urdf/objects/block_4.urdf",
-            "block_5": "urdf/objects/block_5.urdf",
-            "cylinder_1": "urdf/objects/cylinder_1.urdf",
-            "cylinder_2": "urdf/objects/cylinder_2.urdf",
-            "cylinder_3": "urdf/objects/cylinder_3.urdf",       # regular decagon (10-sided) prism
-            "cylinder_4": "urdf/objects/cylinder_4.urdf",
-            "else_1": "urdf/objects/else_1.urdf",
-            "else_2": "urdf/objects/else_2.urdf",
-            "else_3": "urdf/objects/else_3.urdf",
-            "else_4": "urdf/objects/else_4.urdf",
-            "else_5": "urdf/objects/else_5.urdf",
-            "else_6": "urdf/objects/else_6.urdf",
-            "else_7": "urdf/objects/else_7.urdf",
-            "else_8": "urdf/objects/else_8.urdf",
+            # Reverted to the original in-hand-rotation object set and its
+            # original set_objN_* names (previously these had been renamed
+            # twice, first to block_N/cylinder_N/else_N, then pruned down to
+            # a curated 9-object subset -- both the renaming and the pruning
+            # have been undone; all 16 original objects are back, under
+            # their original names, unchanged).
+            "set_obj1_regular_block": "urdf/objects/set_obj1_regular_block.urdf",
+            "set_obj2_block": "urdf/objects/set_obj2_block.urdf",
+            "set_obj3_block": "urdf/objects/set_obj3_block.urdf",
+            "set_obj4_block": "urdf/objects/set_obj4_block.urdf",
+            "set_obj5_block": "urdf/objects/set_obj5_block.urdf",
+            "set_obj6_block_corner": "urdf/objects/set_obj6_block_corner.urdf",
+            "set_obj7_block": "urdf/objects/set_obj7_block.urdf",
+            "set_obj8_short_block": "urdf/objects/set_obj8_short_block.urdf",
+            "set_obj9_thin_block": "urdf/objects/set_obj9_thin_block.urdf",
+            "set_obj10_thin_block_corner": "urdf/objects/set_obj10_thin_block_corner.urdf",
+            "set_obj11_cylinder": "urdf/objects/set_obj11_cylinder.urdf",
+            "set_obj12_cylinder_corner": "urdf/objects/set_obj12_cylinder_corner.urdf",
+            "set_obj13_irregular_block": "urdf/objects/set_obj13_irregular_block.urdf",
+            "set_obj14_irregular_block_cross": "urdf/objects/set_obj14_irregular_block_cross.urdf",
+            "set_obj15_irregular_block_time": "urdf/objects/set_obj15_irregular_block_time.urdf",
+            "set_obj16_cylinder_axis": "urdf/objects/set_obj16_cylinder_axis.urdf",
             "cross4_0": "urdf/objects/cross4_0.urdf", "cross4_1": "urdf/objects/cross4_1.urdf", "cross4_2": "urdf/objects/cross4_2.urdf", "cross4_3": "urdf/objects/cross4_3.urdf", "cross4_4": "urdf/objects/cross4_4.urdf"
         }
 
         self.object_sets = {
             "ball": ["ball"],
             "cross": ["cross4_0", "cross4_1", "cross4_2", "cross4_3", "cross4_4"],
-            # Pass 3: else_1..else_8 excluded from training entirely (kept as
-            # valid, loadable assets in asset_files_dict above in case they're
-            # needed again later, just not part of the "C" training roster).
-            # Training now targets only these 9 curated objects, with no
-            # generalization goal beyond them.
-            "C": ['block_1', 'block_2', 'block_3', 'block_4', 'block_5',
-                  'cylinder_1', 'cylinder_2', 'cylinder_3', 'cylinder_4']
+            # All 16 objects from the original in-hand-rotation object set,
+            # under their original set_objN_* names. This replaces the old
+            # curated 9-object "C" set entirely (block_N/cylinder_N/else_N
+            # no longer exist as asset files).
+            "set16": ["set_obj1_regular_block", "set_obj2_block", "set_obj3_block",
+                      "set_obj4_block", "set_obj5_block", "set_obj6_block_corner",
+                      "set_obj7_block", "set_obj8_short_block", "set_obj9_thin_block",
+                      "set_obj10_thin_block_corner", "set_obj11_cylinder",
+                      "set_obj12_cylinder_corner", "set_obj13_irregular_block",
+                      "set_obj14_irregular_block_cross", "set_obj15_irregular_block_time",
+                      "set_obj16_cylinder_axis"]
         }
 
         self.object_set_id = self.cfg["env"].get("objSet", "0")
@@ -507,6 +510,30 @@ class AllegroArmMOAR(VecTask):
         self.force_prob_range = to_torch(self.force_prob_range, dtype=torch.float, device=self.device)
         self.random_force_prob = torch.exp((torch.log(self.force_prob_range[0]) - torch.log(self.force_prob_range[1]))
                                            * torch.rand(self.num_envs, device=self.device) + torch.log(self.force_prob_range[1]))
+
+        # Snapshot of the fully-configured ("final", frac=1.0) DR magnitudes,
+        # taken once before the progressive-DR ramp (if enabled) starts
+        # overwriting the same-named live attributes in place every step.
+        # object/hand friction, mass, and PD-gain-multiplier ranges are
+        # stored as (low, high) and ramped by shrinking toward their
+        # midpoint; sensor_thresh is stored as (low, low+width) for the same
+        # treatment; everything else here is a single "no randomization at
+        # zero" magnitude/probability, ramped by a straight scalar multiply.
+        self._dr_base = {
+            "hand_friction": (self.hand_friction_lower, self.hand_friction_upper),
+            "object_friction": (self.object_friction_lower, self.object_friction_upper),
+            "mass": (self.randomize_mass_lower, self.randomize_mass_upper),
+            "sensor_thresh": (self.sensor_thresh_low, self.sensor_thresh_low + self.sensor_thresh),
+            "sensor_noise": self.sensor_noise,
+            "p_gain_mult": (self.p_gain_mult_low, self.p_gain_mult_high),
+            "d_gain_mult": (self.d_gain_mult_low, self.d_gain_mult_high),
+            "joint_obs_noise": self.joint_obs_noise,
+            "latency": self.latency,
+            "reset_position_noise": self.reset_position_noise,
+            "force_scale": self.force_scale,
+            "force_prob_scalar": self.random_force_prob_scalar,
+            "force_prob_range": (float(self.force_prob_range[0]), float(self.force_prob_range[1])),
+        }
 
         self.rb_forces = torch.zeros((self.num_envs, self.num_bodies, 3), dtype=torch.float, device=self.device)
         self.last_contacts = torch.zeros((self.num_envs, 16), dtype=torch.float, device=self.device)
@@ -1746,6 +1773,56 @@ class AllegroArmMOAR(VecTask):
         self.object_linvel = self.root_state_tensor[self.object_indices, 7:10]
         self.object_angvel = self.root_state_tensor[self.object_indices, 10:13]
 
+    def _dr_ramp_frac(self):
+        """Fraction in [dr_ramp_start_frac, 1.0] of the fully-configured DR
+        magnitude that should be active right now, linearly ramped over
+        dr_ramp_steps control steps. Always 1.0 (no-op) when disabled."""
+        if not self.dr_ramp_enable or self.dr_ramp_steps <= 0:
+            return 1.0
+        progress = min(1.0, self.dr_step_count / float(self.dr_ramp_steps))
+        return self.dr_ramp_start_frac + (1.0 - self.dr_ramp_start_frac) * progress
+
+    @staticmethod
+    def _ramped_range(low, high, frac):
+        """Shrink [low, high] toward its midpoint by frac (frac=1 -> [low,
+        high] unchanged; frac=0 -> collapsed to the midpoint, i.e. the
+        "no randomization" point for a symmetric DR range)."""
+        mid = 0.5 * (low + high)
+        return mid + (low - mid) * frac, mid + (high - mid) * frac
+
+    def _apply_dr_ramp(self):
+        """Recompute the live DR attributes (the same self.* fields read
+        throughout reset_idx/pre_physics_step/compute_observations) from the
+        frac=1.0 snapshot in self._dr_base, scaled by the current ramp
+        fraction. Called once per control step from pre_physics_step, before
+        any env's reset_idx runs for this step. No-op when disabled, so
+        disabled behavior is byte-identical to before this feature existed."""
+        if not self.dr_ramp_enable:
+            return
+        frac = self._dr_ramp_frac()
+
+        self.hand_friction_lower, self.hand_friction_upper = self._ramped_range(*self._dr_base["hand_friction"], frac)
+        self.object_friction_lower, self.object_friction_upper = self._ramped_range(*self._dr_base["object_friction"], frac)
+        self.randomize_mass_lower, self.randomize_mass_upper = self._ramped_range(*self._dr_base["mass"], frac)
+
+        thresh_low, thresh_high = self._ramped_range(*self._dr_base["sensor_thresh"], frac)
+        self.sensor_thresh_low = thresh_low
+        self.sensor_thresh = thresh_high - thresh_low
+
+        self.p_gain_mult_low, self.p_gain_mult_high = self._ramped_range(*self._dr_base["p_gain_mult"], frac)
+        self.d_gain_mult_low, self.d_gain_mult_high = self._ramped_range(*self._dr_base["d_gain_mult"], frac)
+
+        self.sensor_noise = self._dr_base["sensor_noise"] * frac
+        self.joint_obs_noise = self._dr_base["joint_obs_noise"] * frac
+        self.latency = self._dr_base["latency"] * frac
+        self.reset_position_noise = self._dr_base["reset_position_noise"] * frac
+        self.force_scale = self._dr_base["force_scale"] * frac
+        self.random_force_prob_scalar = self._dr_base["force_prob_scalar"] * frac
+
+        prob_low, prob_high = self._ramped_range(*self._dr_base["force_prob_range"], frac)
+        self.force_prob_range[0] = prob_low
+        self.force_prob_range[1] = prob_high
+
     def reset_idx(self, env_ids, goal_env_ids, is_test=False):
         # Collect per-object episode stats before any buffer reset
         for env_id in env_ids:
@@ -1903,6 +1980,9 @@ class AllegroArmMOAR(VecTask):
             self.object_init_quat[env_id] = self.root_state_tensor[self.object_indices[env_id], 3:7]
 
     def pre_physics_step(self, actions):
+        self._apply_dr_ramp()
+        self.dr_step_count += 1
+
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         goal_env_ids = self.reset_goal_buf.nonzero(as_tuple=False).squeeze(-1)
 

@@ -11,7 +11,7 @@
 #   python tools/evaluate_policy_per_object.py checkpoint=<path/to/checkpoint.pth>
 #
 # Useful overrides:
-#   task.env.numEnvs=900              envs run in parallel (multiple of 9 keeps class balance exact)
+#   task.env.numEnvs=1600              envs run in parallel (multiple of 16 keeps class balance exact)
 #   +target_episodes_per_class=300    stop once every class has this many episodes
 #   +max_control_steps=3000           hard cap on total env.step() calls
 #   +out_path=tools/data/policy_eval.npz

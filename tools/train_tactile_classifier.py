@@ -1,7 +1,8 @@
 # tools/train_tactile_classifier.py
 #
-# Train a small 1D-CNN to classify which of the 9 training objects is being
-# manipulated, from the tactile (+ optional proprioceptive) time series recorded
+# Train a small 1D-CNN to classify which of the training objects (object_sets
+# ["set16"], 16 of them) is being manipulated, from the tactile (+ optional
+# proprioceptive) time series recorded
 # by tools/collect_tactile_data.py. Classification only -- no shape reconstruction.
 #
 # Usage (from the repo root, in the project's conda env):
@@ -170,7 +171,7 @@ def main():
     test_loss, test_acc = run_epoch(model, test_loader, device, optimizer=None)
     print(f"\n[train] best val acc = {best_val_acc:.3f}")
     print(f"[train] test loss {test_loss:.4f} acc {test_acc:.3f} "
-          f"(random 9-way baseline = {1 / num_classes:.3f})")
+          f"(random {num_classes}-way baseline = {1 / num_classes:.3f})")
 
     model.eval()
     all_preds, all_labels = [], []
