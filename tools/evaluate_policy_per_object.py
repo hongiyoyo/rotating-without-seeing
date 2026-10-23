@@ -89,6 +89,9 @@ def evaluate(cfg: DictConfig):
 
     episodes = []  # list of {"obj": str, "rotations": int, "ep_len": int, "ep_reward": float}
     episode_counts = np.zeros(num_classes, dtype=np.int64)
+    # Episodes with ep_len == 0 (env reset again before taking a single step) are not
+    # real rollouts; drop them so they don't drag down reward / completion stats.
+    zero_len_counts = np.zeros(num_classes, dtype=np.int64)
 
     t0 = time.time()
     step = 0
@@ -98,6 +101,9 @@ def evaluate(cfg: DictConfig):
 
         if hasattr(env, "_pending_obj_stats") and env._pending_obj_stats:
             for stat in env._pending_obj_stats:
+                if stat["ep_len"] <= 0:
+                    zero_len_counts[name_to_idx[stat["obj"]]] += 1
+                    continue
                 episodes.append(stat)
                 episode_counts[name_to_idx[stat["obj"]]] += 1
             env._pending_obj_stats.clear()
@@ -106,7 +112,8 @@ def evaluate(cfg: DictConfig):
             elapsed = time.time() - t0
             print(f"[eval] step {step + 1}/{max_control_steps} "
                   f"({(step + 1) / max(elapsed, 1e-6):.2f} steps/s) | "
-                  f"episodes/class: {dict(zip(label_names, episode_counts.tolist()))}")
+                  f"episodes/class: {dict(zip(label_names, episode_counts.tolist()))} | "
+                  f"zero-length dropped: {int(zero_len_counts.sum())}")
 
         if episode_counts.min() >= target_episodes_per_class:
             print(f"[eval] reached target of {target_episodes_per_class} episodes/class at step {step + 1}, stopping.")
@@ -133,9 +140,12 @@ def evaluate(cfg: DictConfig):
         labels=labels, rotations=rotations, ep_len=ep_len, ep_reward=ep_reward,
         full_duration=full_duration, label_names=np.array(label_names),
         max_episode_length=np.array(max_episode_length),
+        zero_len_dropped=zero_len_counts,
     )
 
     print(f"\n[eval] saved {len(episodes)} episodes to {out_path}")
+    print(f"[eval] dropped {int(zero_len_counts.sum())} zero-length episodes: "
+          f"{dict(zip(label_names, zero_len_counts.tolist()))}")
     print(f"[eval] {'object':12s} {'n':>5s} {'reward(mean±std)':>20s} {'rotations(mean)':>16s} "
           f"{'ep_len(mean)':>13s} {'full-duration%':>15s}")
     for c, name in enumerate(label_names):

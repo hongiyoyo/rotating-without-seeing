@@ -1,7 +1,7 @@
 # tools/train_tactile_classifier.py
 #
 # Train a small 1D-CNN to classify which of the training objects (object_sets
-# ["set16"], 16 of them) is being manipulated, from the tactile (+ optional
+# ["C"], 9 of them) is being manipulated, from the tactile (+ optional
 # proprioceptive) time series recorded
 # by tools/collect_tactile_data.py. Classification only -- no shape reconstruction.
 #

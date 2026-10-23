@@ -87,6 +87,10 @@ class AllegroArmMOAR(VecTask):
 
         self.reset_position_noise = self.cfg["env"]["resetPositionNoise"]
         self.reset_rotation_noise = self.cfg["env"]["resetRotationNoise"]
+        # Object initial-pose randomization (not affected by the DR ramp).
+        self.obj_init_pos_noise_xy = self.cfg["env"].get("objInitPosNoiseXY", 0.015)
+        self.obj_init_pos_z_low = self.cfg["env"].get("objInitPosZLow", 0.0)
+        self.obj_init_pos_z_high = self.cfg["env"].get("objInitPosZHigh", 0.01)
         self.reset_dof_pos_noise = self.cfg["env"]["resetDofPosRandomInterval"]
         self.reset_dof_vel_noise = self.cfg["env"]["resetDofVelRandomInterval"]
 
@@ -110,7 +114,7 @@ class AllegroArmMOAR(VecTask):
         self.sensor_thresh_low = self.cfg["env"].get("sensorThreshLow", 1.0)
         self.sensor_noise = self.cfg["env"].get("sensorNoise", 0.2)
 
-        # Object scale randomization range for the default ("set16") object set.
+        # Object scale randomization range for the default ("C") object set.
         self.object_scale_low = self.cfg["env"].get("objectScaleLow", 0.95)
         self.object_scale_high = self.cfg["env"].get("objectScaleHigh", 1.1)
 
@@ -162,7 +166,7 @@ class AllegroArmMOAR(VecTask):
         self.finger_coef = self.cfg['env'].get('finger_coef', 0.1)
         self.latency = self.cfg['env'].get("latency", 0.25)
 
-        # --- Progressive domain randomization (enabled by default, see yaml) ---
+        # --- Progressive domain randomization (disabled by default, see yaml) ---
         # When enabled, every DR magnitude parsed above (friction/mass ranges,
         # PD gain multiplier ranges, sensor threshold/noise/lag, joint obs
         # noise, position noise, random force scale/probability) starts
@@ -188,45 +192,31 @@ class AllegroArmMOAR(VecTask):
 
         self.asset_files_dict = {
             "ball": "urdf/objects/ball.urdf",
-            # Reverted to the original in-hand-rotation object set and its
-            # original set_objN_* names (previously these had been renamed
-            # twice, first to block_N/cylinder_N/else_N, then pruned down to
-            # a curated 9-object subset -- both the renaming and the pruning
-            # have been undone; all 16 original objects are back, under
-            # their original names, unchanged).
-            "set_obj1_regular_block": "urdf/objects/set_obj1_regular_block.urdf",
-            "set_obj2_block": "urdf/objects/set_obj2_block.urdf",
-            "set_obj3_block": "urdf/objects/set_obj3_block.urdf",
-            "set_obj4_block": "urdf/objects/set_obj4_block.urdf",
-            "set_obj5_block": "urdf/objects/set_obj5_block.urdf",
-            "set_obj6_block_corner": "urdf/objects/set_obj6_block_corner.urdf",
-            "set_obj7_block": "urdf/objects/set_obj7_block.urdf",
-            "set_obj8_short_block": "urdf/objects/set_obj8_short_block.urdf",
-            "set_obj9_thin_block": "urdf/objects/set_obj9_thin_block.urdf",
-            "set_obj10_thin_block_corner": "urdf/objects/set_obj10_thin_block_corner.urdf",
-            "set_obj11_cylinder": "urdf/objects/set_obj11_cylinder.urdf",
-            "set_obj12_cylinder_corner": "urdf/objects/set_obj12_cylinder_corner.urdf",
-            "set_obj13_irregular_block": "urdf/objects/set_obj13_irregular_block.urdf",
-            "set_obj14_irregular_block_cross": "urdf/objects/set_obj14_irregular_block_cross.urdf",
-            "set_obj15_irregular_block_time": "urdf/objects/set_obj15_irregular_block_time.urdf",
-            "set_obj16_cylinder_axis": "urdf/objects/set_obj16_cylinder_axis.urdf",
+            # 9 training objects (the "C" set). All except cylinder_3 are original
+            # in-hand-rotation objects, renamed:
+            #   block_1 = set_obj1_regular_block, block_2 = set_obj15_irregular_block_time,
+            #   block_3 = set_obj2_block, block_4 = set_obj6_block_corner,
+            #   block_5 = set_obj7_block, cylinder_1 = set_obj11_cylinder,
+            #   cylinder_2 = set_obj16_cylinder_axis, cylinder_4 = set_obj12_cylinder_corner
+            # cylinder_3 is a procedurally generated regular decagon (10-sided) prism.
+            # The other 8 original objects were deleted.
+            "block_1": "urdf/objects/block_1.urdf",
+            "block_2": "urdf/objects/block_2.urdf",
+            "block_3": "urdf/objects/block_3.urdf",
+            "block_4": "urdf/objects/block_4.urdf",
+            "block_5": "urdf/objects/block_5.urdf",
+            "cylinder_1": "urdf/objects/cylinder_1.urdf",
+            "cylinder_2": "urdf/objects/cylinder_2.urdf",
+            "cylinder_3": "urdf/objects/cylinder_3.urdf",
+            "cylinder_4": "urdf/objects/cylinder_4.urdf",
             "cross4_0": "urdf/objects/cross4_0.urdf", "cross4_1": "urdf/objects/cross4_1.urdf", "cross4_2": "urdf/objects/cross4_2.urdf", "cross4_3": "urdf/objects/cross4_3.urdf", "cross4_4": "urdf/objects/cross4_4.urdf"
         }
 
         self.object_sets = {
             "ball": ["ball"],
             "cross": ["cross4_0", "cross4_1", "cross4_2", "cross4_3", "cross4_4"],
-            # All 16 objects from the original in-hand-rotation object set,
-            # under their original set_objN_* names. This replaces the old
-            # curated 9-object "C" set entirely (block_N/cylinder_N/else_N
-            # no longer exist as asset files).
-            "set16": ["set_obj1_regular_block", "set_obj2_block", "set_obj3_block",
-                      "set_obj4_block", "set_obj5_block", "set_obj6_block_corner",
-                      "set_obj7_block", "set_obj8_short_block", "set_obj9_thin_block",
-                      "set_obj10_thin_block_corner", "set_obj11_cylinder",
-                      "set_obj12_cylinder_corner", "set_obj13_irregular_block",
-                      "set_obj14_irregular_block_cross", "set_obj15_irregular_block_time",
-                      "set_obj16_cylinder_axis"]
+            "C": ["block_1", "block_2", "block_3", "block_4", "block_5",
+                  "cylinder_1", "cylinder_2", "cylinder_3", "cylinder_4"],
         }
 
         self.object_set_id = self.cfg["env"].get("objSet", "0")
@@ -1843,16 +1833,11 @@ class AllegroArmMOAR(VecTask):
             self.apply_randomizations(self.randomization_params)
 
         for env_id in env_ids:
-            env = self.envs[env_id]
-            handle = self.gym.find_actor_handle(env, 'object')
-            prop = self.gym.get_actor_rigid_body_properties(env, handle)
-            if not is_test:
-                for p in prop:
-                    p.mass = np.random.uniform(self.randomize_mass_lower, self.randomize_mass_upper)
-            else:
-                for p in prop:
-                    p.mass = np.random.uniform(self.randomize_mass_lower, self.randomize_mass_upper)
-            self.gym.set_actor_rigid_body_properties(env, handle, prop)
+            # NOTE: object mass is NOT re-randomized here. On the GPU pipeline,
+            # set_actor_rigid_body_properties() after prepare_sim discards the
+            # root-state write made below in the same step, so the object's
+            # randomized initial position/yaw never reached the sim. Mass is
+            # randomized once per env at creation time (_create_envs) instead.
 
             # Hand and object friction are sampled independently (paper: [0.3, 3.0] for both),
             # each read from its own actor's rigid-shape properties (not shared/misread).
@@ -1911,10 +1896,13 @@ class AllegroArmMOAR(VecTask):
             self.root_state_tensor[self.object_indices[env_ids], self.up_axis_idx] = self.object_init_state[env_ids, ..., self.up_axis_idx] + \
                                                                                         self.reset_position_noise * rand_floats[:, self.up_axis_idx].unsqueeze(1)
         else:
-            self.root_state_tensor[self.object_indices[env_ids], 0:2] = self.object_init_state[env_ids, ..., 0:2] + \
-                self.reset_position_noise * rand_floats[:, 0:2]
-            self.root_state_tensor[self.object_indices[env_ids], self.up_axis_idx] = self.object_init_state[env_ids, ..., self.up_axis_idx] + \
-                self.reset_position_noise * rand_floats[:, self.up_axis_idx]
+            # x, y ~ U(-noise_xy, +noise_xy), z ~ U(z_low, z_high), always at full range (not DR-ramped).
+            n = len(env_ids)
+            xy_offset = self.obj_init_pos_noise_xy * torch_rand_float(-1.0, 1.0, (n, 2), device=self.device)
+            z_offset = torch_rand_float(self.obj_init_pos_z_low, self.obj_init_pos_z_high, (n, 1), device=self.device).squeeze(-1)
+            self.root_state_tensor[self.object_indices[env_ids], 0:2] = self.object_init_state[env_ids, 0:2] + xy_offset
+            self.root_state_tensor[self.object_indices[env_ids], self.up_axis_idx] = \
+                self.object_init_state[env_ids, self.up_axis_idx] + z_offset
 
         if not self.use_initial_rotation:
             # legacy codes.
@@ -1923,8 +1911,13 @@ class AllegroArmMOAR(VecTask):
                                                     self.y_unit_tensor[env_ids])
 
         else:
-            new_object_rot = randomize_rotation(torch.zeros_like(rand_floats[:, 3]), rand_floats[:, 4],
-                                                self.y_unit_tensor[env_ids], self.z_unit_tensor[env_ids])
+            # yaw ~ U(-pi, pi) about the world z axis, applied on top of the nominal start orientation.
+            yaw = torch_rand_float(-np.pi, np.pi, (len(env_ids), 1), device=self.device).squeeze(-1)
+            yaw_quat = quat_from_angle_axis(yaw, self.z_unit_tensor[env_ids])
+            if self.obs_type == "full_stack_baoding" or self.obs_type == "partial_stack_baoding":
+                new_object_rot = yaw_quat
+            else:
+                new_object_rot = quat_mul(yaw_quat, self.object_init_state[env_ids, 3:7])
 
         if self.obs_type == "full_stack_baoding" or self.obs_type == "partial_stack_baoding":
             self.root_state_tensor[self.object_indices[env_ids], 3:7] = new_object_rot.clone().unsqueeze(1)

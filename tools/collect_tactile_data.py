@@ -5,7 +5,7 @@
 # perceives, labeled with the (sim-only) ground-truth object identity. The policy
 # never observes object identity (see README / task file), so these tactile
 # responses are purely shape-driven -- this dataset is meant to train a downstream
-# CNN that classifies which of the training objects (object_sets["set16"], 16 of
+# CNN that classifies which of the training objects (object_sets["C"], 9 of
 # them) is being manipulated, from touch alone.
 #
 # Usage (from the repo root, in the project's conda env):

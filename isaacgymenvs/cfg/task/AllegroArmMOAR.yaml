@@ -37,7 +37,8 @@ env:
   rewardType: "finger"
   sensor: "thick"
   objInit: "new"
-  objSet: "set16"
+  # "C": the 9 training objects (block_1..5, cylinder_1..4).
+  objSet: "C"
   pc_category: "mug"
   skill_step: 500
   spin_coef: 1.0
@@ -71,12 +72,20 @@ env:
   # randomized uniformly in [-pi, pi] at every reset instead of always
   # starting at the URDF's fixed default orientation.
   useInitRandomRotation: True
+  # Object initial position randomization at every reset, applied as an
+  # offset from the nominal start pose (meters). x/y ~ U(-objInitPosNoiseXY,
+  # +objInitPosNoiseXY), z ~ U(objInitPosZLow, objInitPosZHigh). Always at
+  # full range: NOT scaled by the progressive-DR ramp below (the old
+  # resetPositionNoise path was ramped from 0, so early on it had no effect).
+  objInitPosNoiseXY: 0.015
+  objInitPosZLow: 0.0
+  objInitPosZHigh: 0.01
   # Object/hand friction randomization range (paper: [0.3, 3.0] for both, sampled independently)
   objectFrictionLow: 0.3
   objectFrictionHigh: 3.0
   handFrictionLow: 0.3
   handFrictionHigh: 3.0
-  # Object scale randomization range for the default ("set16") object set (paper: U(0.95, 1.05))
+  # Object scale randomization range for the default ("C") object set (paper: U(0.95, 1.05))
   objectScaleLow: 0.95
   objectScaleHigh: 1.05
   # PD gain randomization multipliers (paper: P x U(0.66, 1.33), D x U(0.80, 1.20))
@@ -92,19 +101,20 @@ env:
   useForceProbRange: True
 
   # Progressive domain randomization -- see allegro_arm_morb_axis.py's
-  # _dr_ramp_frac()/_apply_dr_ramp(). Enabled by default for the 16-object
-  # ("set16") training run: every DR range/magnitude above (friction, mass,
-  # PD gain multipliers, sensor threshold/noise/lag, joint obs noise, reset
-  # position noise, random force scale/probability) starts shrunk toward "no
+  # _dr_ramp_frac()/_apply_dr_ramp(). Disabled by default (the 9-object
+  # training runs, incl. 2026-10-20 rws2-randinit-zup, used full DR from the
+  # start). When enabled, every DR range/magnitude above (friction,
+  # PD gain multipliers, sensor threshold/noise/lag, joint obs noise,
+  # random force scale/probability) starts shrunk toward "no
   # randomization" at drRampStartFrac and linearly widens back out to the
   # values configured above over drRampSteps control steps (pre_physics_step
   # calls, i.e. env.step() calls -- NOT PPO epochs; cfg/train's
   # horizon_length=16 steps/epoch x max_epochs=20100 = 321,600 total steps
   # for the full paper-spec run, so 50000 ramps DR up over roughly the first
-  # ~15% of training). Object scale is not covered (it's baked in at env
-  # creation, before any ramp has run). Set to False to fully restore the
-  # old always-on-full-DR behavior.
-  drRampEnable: True
+  # ~15% of training). Object scale and mass are not covered (both are fixed
+  # per env at creation, before any ramp has run). Enable with
+  # task.env.drRampEnable=True.
+  drRampEnable: False
   drRampStartFrac: 0.0
   drRampSteps: 50000
 
