@@ -906,6 +906,12 @@ class AllegroArmMOAR(VecTask):
 
         self.object_rb_handles = to_torch(self.object_rb_handles, dtype=torch.long, device=self.device)
         self.object_rb_masses = to_torch(self.object_rb_masses, dtype=torch.float, device=self.device)
+        # Per-env object mass, read once. Mass is randomized only here at creation and never
+        # changed afterwards (see the NOTE in reset_idx), so pre_physics_step can use this
+        # instead of querying every env's rigid body properties each control step.
+        self.object_env_masses = to_torch(
+            [self.gym.get_actor_rigid_body_properties(env, self.gym.find_actor_handle(env, 'object'))[0].mass
+             for env in self.envs], dtype=torch.float, device=self.device)
 
         self.hand_indices = to_torch(self.hand_indices, dtype=torch.long, device=self.device)
         self.object_indices = to_torch(self.object_indices, dtype=torch.long, device=self.device)
@@ -2023,9 +2029,7 @@ class AllegroArmMOAR(VecTask):
         
         if self.force_scale > 0.0:
             self.rb_forces *= torch.pow(self.force_decay, self.dt / self.force_decay_interval)
-            obj_mass = to_torch(
-                [self.gym.get_actor_rigid_body_properties(env, self.gym.find_actor_handle(env, 'object'))[0].mass for
-                 env in self.envs], device=self.device)
+            obj_mass = self.object_env_masses
             prob = self.random_force_prob if self.use_force_prob_range else self.random_force_prob_scalar
             force_indices = (torch.less(torch.rand(self.num_envs, device=self.device), prob)).nonzero()
             self.rb_forces[force_indices, self.object_rb_handles, :] = torch.randn(

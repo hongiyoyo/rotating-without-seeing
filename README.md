@@ -4,7 +4,7 @@
 
 이 문서는 이 코드를 처음 이어받는 사람/에이전트가 배경 설명 없이 바로 작업을 이어갈 수 있도록 작업 이력, 설계 근거, 그리고 **반드시 알아야 할 함정들**을 정리한 것입니다.
 
-## 현재 상태 요약 (가장 먼저 읽을 것, 2026-10-23 기준)
+## 현재 상태 요약 (가장 먼저 읽을 것, 2026-10-28 기준)
 
 1. **개발 PC가 2026-10-23에 포맷되었습니다.** 새 공용 PC(`C:\YangJaehong`)에 저장소를 다시 clone하고 WSL2 환경을 처음부터 다시 설치했습니다([실행 환경](#실행-환경-wsl2)). gitignored였던 `runs/`(체크포인트), `wandb/`, `tools/data/`는 모두 사라졌습니다. **학습된 체크포인트는 하나도 남아 있지 않으므로, policy가 필요하면 재학습해야 합니다.**
 2. **9/29 이후 작업 중 push되지 않았던 커밋(`025d2e7`)은 사라졌고**, 기억과 wandb 기록을 바탕으로 복원해 `e1adb7f`로 push했습니다. 복원한 내용:
@@ -14,7 +14,8 @@
    - 점진적 DR(DR ramp) 기본값을 **끔**
    - 평가 스크립트에서 길이 0인 에피소드 제외
 3. **README는 복원 시점(10/23)의 코드 기준입니다.** 10/20 학습 당시 코드와 완전히 같다는 보장은 없습니다. 알려진 차이는 [학습 기록](#학습-기록-wandb)에 정리했습니다.
-4. 바로 다음 할 일: 현재 기본 설정으로 본 학습(`bash scripts/train_z_axis.sh 0`)을 다시 돌려 체크포인트를 확보하는 것. 그 뒤 [물체별 회전 성능 평가](#물체별-회전-성능-평가)와 [촉각 기반 물체 분류](#촉각-기반-물체-분류)를 새 체크포인트로 다시 돌릴 수 있습니다.
+4. **2026-10-28 스모크 테스트로 위 복원 내용이 실제 시뮬레이션에 반영되는 것을 확인했습니다** — [스모크 테스트 결과](#스모크-테스트-결과-2026-10-28). 같은 날 매 step 물체 질량을 env마다 다시 읽던 코드를 캐시(`object_env_masses`)로 바꿨습니다(결과 동일, 속도 차이는 거의 없음).
+5. 바로 다음 할 일: 본 학습(`bash scripts/train_z_axis.sh 0`)으로 체크포인트를 확보하는 것(2026-10-28 시작, [학습 기록](#학습-기록-wandb) 참고). 그 뒤 [물체별 회전 성능 평가](#물체별-회전-성능-평가)와 [촉각 기반 물체 분류](#촉각-기반-물체-분류)를 새 체크포인트로 다시 돌릴 수 있습니다.
 
 ## 실행 환경 (WSL2)
 
@@ -168,9 +169,33 @@ player.get_batch_size(obses, 1)
 
 **GPU 파이프라인에서 `set_actor_rigid_body_properties()`를 호출하면, 같은 step에 `set_actor_root_state_tensor_indexed()`로 쓴 actor의 root state(위치/자세)가 무시됩니다** (호출 순서 무관, 2026-10-23 직접 실험으로 확인. `set_actor_rigid_shape_properties()`(마찰)는 문제 없음).
 
-예전 `reset_idx`는 매 reset마다 물체 질량을 이 함수로 다시 뽑았기 때문에, **물체 초기 위치/yaw 랜덤화가 코드상으로는 있었지만 실제 시뮬레이션에는 한 번도 반영되지 않았습니다**(물체가 매번 같은 자세에서 시작). 지금은 reset 중 질량 재설정을 제거했고, 질량은 env 생성 시 env별로 한 번만 랜덤화됩니다. **`reset_idx`에 rigid body property 설정을 다시 넣지 마세요.**
+예전 `reset_idx`는 매 reset마다 물체 질량을 이 함수로 다시 뽑았기 때문에, **물체 초기 위치/yaw 랜덤화가 코드상으로는 있었지만 실제 시뮬레이션에는 한 번도 반영되지 않았습니다**(물체가 매번 같은 자세에서 시작). 지금은 reset 중 질량 재설정을 제거했고, 질량은 env 생성 시 env별로 한 번만 랜덤화됩니다. **`reset_idx`에 rigid body property 설정을 다시 넣지 마세요.** 랜덤 외력 계산(`pre_physics_step`)은 env 생성 직후 읽어 둔 `self.object_env_masses`를 씁니다. 질량을 학습 중에 바꾸는 기능을 다시 넣는다면 이 캐시도 같이 갱신해야 합니다.
+
+vec_task 쪽 DR(`randomization_params.actor_params`)이 reset 중 손 관절 속성(`dof_properties`)을 다시 뽑는 경우는 이 문제가 없습니다(2026-10-28 스모크 테스트로 확인).
 
 검증 방법: reset 직후 `root_state_tensor`에 써 넣은 yaw와, `gym.simulate()` 한 번 뒤 `refresh_actor_root_state_tensor()`로 읽은 yaw를 비교. 정상이면 차이가 거의 0(중앙값 ~0.005rad)이고, 버그가 있으면 시뮬레이터 쪽 yaw가 전부 0 근처로 돌아가 있습니다.
+
+### 8. 체크포인트 경로의 대괄호(`rew[7.25]`)는 Hydra가 문법으로 읽음
+
+rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄호가 들어갑니다. `checkpoint=runs/.../rew[7.25].pth`로 넘기면 Hydra가 `mismatched input '[' expecting <EOF>`로 죽습니다. **bash가 벗겨내지 않도록 작은따옴표를 큰따옴표로 한 번 더 감싸서** Hydra까지 따옴표가 전달되게 하세요: `checkpoint="'runs/.../last_xxxep110rew[7.25].pth'"`. (`checkpoint='...'`만 쓰면 bash가 작은따옴표를 제거해서 똑같이 실패합니다.)
+
+## 스모크 테스트 결과 (2026-10-28)
+
+커밋 `8048f74` 기준(질량 캐시 적용 후 다시 확인), 새 PC(RTX 4070 Ti SUPER)에서:
+
+| 테스트 | 결과 |
+|---|---|
+| 환경 검증 (512 env, 학습 없이) | 물체 9개 고르게 배정, 관측 340차원, GPU 시뮬레이션, DR ramp 꺼짐, NaN 없음 |
+| 초기 위치/yaw 반영 | reset에서 써 넣은 yaw와 다음 step 시뮬레이터 yaw 차이 중앙값 ~0.005rad (첫 reset, 강제 reset, vec_task 손 DR이 같이 걸리는 reset, 낙하로 인한 일반 reset 모두). 범위도 설정대로(x, y ±1.5cm, z 0~1cm, yaw ±π) |
+| 질량 | env별 0.2~0.6kg, reset 후에도 그대로. 캐시 값 = 시뮬레이터 값 |
+| 64 env 학습 110 epoch (wandb 켬) | 정상 종료, 체크포인트 저장, wandb에 `PerObject/*` 포함 기록 |
+| 8192 env 학습 5 epoch | 메모리 부족 없음, 초반 ~9~11k step/s (10/20 학습 초반과 같음 → 전체 ~45시간 예상) |
+| `evaluate_policy_per_object.py` | 정상 동작 ([함정 #8](#8-체크포인트-경로의-대괄호rew725는-hydra가-문법으로-읽음)대로 경로를 따옴표 처리해야 함) |
+
+참고:
+- **길이 0 에피소드는 시작 시점에만 생깁니다.** 평가를 시작하면 env마다 정확히 1개씩 생기고, 실제 롤아웃 중에는 생기지 않았습니다. 8월 평가(900 env, 약 3,000 에피소드)의 "물체마다 25% 이상 길이 0"도 이 시작 기록이었을 가능성이 큽니다(900 / (3,030 + 900) ≈ 23%).
+- 학습 중 `PerObject/*` 로그에도 이 시작 기록이 섞이지만 epoch 1에만 영향이 있습니다.
+- 64 env처럼 작은 학습에서는 fps가 `1024000000`이나 음수로 찍히는 줄이 가끔 나옵니다. 시간 측정 출력 문제일 뿐이고, 8192 env에서는 나오지 않았습니다.
 
 ## 학습용 물체 (9개, `objSet: "C"`)
 
@@ -235,6 +260,7 @@ player.get_batch_size(obses, 1)
 | 2026-09-29 | `rws-set16` (`adrn0fwz`) | `71e2df7` | 16개 | 30분 만에 crash | 없음 |
 | 2026-10-20 | `rws2-randinit` (`5ng9uo5d`) | `3e0c2fe` | 9개 | 12분 후 중단 | 없음 |
 | 2026-10-20 | `rws2-randinit-zup` (`im67809a`) | `025d2e7` (push 안 됨, 사라짐) | 9개 | 20,100 epoch 완주(45.4h), best **826.83** (epoch 19605), 마지막 740.65 | 사라짐 |
+| 2026-10-28 | `rws2-retrain` (`lxgr93nn`) | `8048f74` + 질량 캐시/README 수정(시작 시점 미커밋, wandb `diff.patch`에 기록) | 9개 | 진행 중 (새 PC, 8192 env, 예상 ~45h) | `runs/z-axis-touch-only/` — **끝나면 저장소 밖에 백업** |
 
 10/20 `rws2-randinit-zup` 마지막 epoch 물체별 reward: block_1 834, block_2 615, block_3 417, block_4 683, block_5 674, cylinder_1 905, cylinder_2 547, cylinder_3 957, cylinder_4 1121.
 
@@ -263,7 +289,7 @@ player.get_batch_size(obses, 1)
   - 실행 예:
     ```bash
     python tools/evaluate_policy_per_object.py \
-      checkpoint='runs/<experiment>/<run>/nn/<name>.pth' \
+      checkpoint="'runs/<experiment>/<run>/nn/<name>.pth'" \
       task.env.numEnvs=900 +target_episodes_per_class=300 +max_control_steps=3000 \
       +out_path=tools/data/policy_eval.npz
     ```
@@ -302,7 +328,7 @@ player.get_batch_size(obses, 1)
    - 실행 예:
      ```bash
      python tools/collect_tactile_data.py \
-       checkpoint='runs/<experiment>/<run>/nn/<name>.pth' \
+       checkpoint="'runs/<experiment>/<run>/nn/<name>.pth'" \
        task.env.numEnvs=900 +target_episodes_per_class=300 +max_control_steps=2000 \
        +out_path=tools/data/tactile_dataset.npz
      ```
