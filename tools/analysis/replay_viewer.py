@@ -128,6 +128,18 @@ def text_lines(rows, origin, size, color):
 
 TEXT_ORIGIN = target + up * 0.13 - right * 0.17
 WHITE, YELLOW, RED, GREY = (1, 1, 1), (1, 0.85, 0.2), (1, 0.3, 0.25), (0.7, 0.7, 0.7)
+GREEN, CYAN, ORANGE = (0.3, 1, 0.4), (0.45, 0.85, 1), (1, 0.6, 0.15)
+
+
+def policy_row(e, idx):
+    """For switch recordings (record_switch.py): which policy acted at this frame."""
+    if "policy" not in e:
+        return []
+    p = int(e["policy"][min(idx, len(e["policy"]) - 1)])
+    name = meta["policies"][p]
+    if p == 0:
+        return [(f"POLICY: {name}  (SWITCH AT {meta['switch_sec']:.1f} S)", CYAN)]
+    return [(f"POLICY: {name}  (SWITCHED AT {meta['switch_sec']:.1f} S)", ORANGE)]
 
 
 def draw_overlay(header, detail=None):
@@ -145,11 +157,13 @@ def draw_overlay(header, detail=None):
 
 def reason_rows(e):
     rows = []
-    if e["hit_tilt"]:
+    if e.get("completed"):
+        rows.append((f"END: COMPLETED {meta['max_episode_length'] * meta['control_dt']:.0f} S (TIME LIMIT)", GREEN))
+    elif e["hit_tilt"]:
         rows.append((f"END: TILT {e['tilt_deg']:.0f} DEG > {meta['tilt_limit_deg']:.0f}", RED))
-    if e["hit_x"]:
+    if not e.get("completed") and e["hit_x"]:
         rows.append((f"END: X {e['x']:.3f} < {meta['x_limit']:.2f}", RED))
-    if e["hit_fall"]:
+    if not e.get("completed") and e["hit_fall"]:
         rows.append((f"END: DIST {e['goal_dist']:.3f} >= {meta['fall_dist']:.2f}", RED))
     if not rows:
         rows.append(("END: UNKNOWN", RED))
@@ -204,7 +218,7 @@ while True:
         if idx >= T:
             break
         set_frame(fr[idx])
-        draw_overlay([head_base, f"T {idx * dt:5.2f} S"])
+        draw_overlay([head_base, f"T {idx * dt:5.2f} S"], policy_row(e, idx))
         gym.draw_viewer(viewer, sim, True)
         acts = poll()
         if acts:
@@ -212,7 +226,7 @@ while True:
             break
     if action is None:  # freeze on the last frame until a key
         set_frame(fr[-1])
-        draw_overlay([head_base, f"T {(T - 1) * dt:5.2f} S  (STOPPED)"], reason_rows(e))
+        draw_overlay([head_base, f"T {(T - 1) * dt:5.2f} S  (STOPPED)"], policy_row(e, T - 1) + reason_rows(e))
         while action is None:
             gym.draw_viewer(viewer, sim, True)
             acts = poll()

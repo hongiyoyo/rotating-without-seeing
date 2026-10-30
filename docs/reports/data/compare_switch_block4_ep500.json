@@ -1,0 +1,83 @@
+{
+ "per_group": 200,
+ "switch_sec": 5.0,
+ "results": [
+  {
+   "config": "generalist only",
+   "n": 200,
+   "completion": 0.52,
+   "early_1s": 0.135,
+   "reached_switch": 151,
+   "fail_after_switch": 0.31125827814569534,
+   "fail_within_1s_after": 0.0,
+   "tilt_share": 0.9583333333333334,
+   "mean_len_s": 32.208999999999996
+  },
+  {
+   "config": "G -> spec_ep156_best",
+   "n": 200,
+   "completion": 0.51,
+   "early_1s": 0.16,
+   "reached_switch": 145,
+   "fail_after_switch": 0.296551724137931,
+   "fail_within_1s_after": 0.013793103448275862,
+   "tilt_share": 0.9795918367346939,
+   "mean_len_s": 29.9435
+  },
+  {
+   "config": "G -> spec_ep200",
+   "n": 200,
+   "completion": 0.59,
+   "early_1s": 0.13,
+   "reached_switch": 153,
+   "fail_after_switch": 0.22875816993464052,
+   "fail_within_1s_after": 0.013071895424836602,
+   "tilt_share": 0.975609756097561,
+   "mean_len_s": 33.929500000000004
+  },
+  {
+   "config": "G -> spec_ep300",
+   "n": 200,
+   "completion": 0.58,
+   "early_1s": 0.095,
+   "reached_switch": 158,
+   "fail_after_switch": 0.26582278481012656,
+   "fail_within_1s_after": 0.006329113924050633,
+   "tilt_share": 0.9523809523809523,
+   "mean_len_s": 34.737500000000004
+  },
+  {
+   "config": "G -> spec_ep400",
+   "n": 200,
+   "completion": 0.45,
+   "early_1s": 0.16,
+   "reached_switch": 141,
+   "fail_after_switch": 0.3617021276595745,
+   "fail_within_1s_after": 0.03546099290780142,
+   "tilt_share": 0.9272727272727272,
+   "mean_len_s": 28.1895
+  },
+  {
+   "config": "G -> spec_ep500",
+   "n": 200,
+   "completion": 0.63,
+   "early_1s": 0.11,
+   "reached_switch": 162,
+   "fail_after_switch": 0.2222222222222222,
+   "fail_within_1s_after": 0.018518518518518517,
+   "tilt_share": 0.9594594594594594,
+   "mean_len_s": 34.9095
+  },
+  {
+   "config": "spec_ep500 only",
+   "n": 200,
+   "completion": 0.515,
+   "early_1s": 0.175,
+   "reached_switch": 137,
+   "fail_after_switch": 0.24817518248175183,
+   "fail_within_1s_after": 0.021897810218978103,
+   "tilt_share": 0.865979381443299,
+   "mean_len_s": 29.657
+  }
+ ]
+}
