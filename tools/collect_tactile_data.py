@@ -18,6 +18,14 @@
 #   +max_control_steps=2000               hard cap on total env.step() calls
 #   +out_path=tools/data/tactile_dataset.npz
 #   +channels=[tactile,joint_pos]         which CHANNEL_SPECS to record, concatenated in order
+#   +target_full_per_class=200            also keep going until every class has this many
+#                                          episodes that ran the full 50 s (needed for the
+#                                          longest classifier window; 0 = off)
+#   task.env.objInitPosZHigh=0.001        evaluation placement height (paper setting: 0-1 mm)
+#
+# Per episode the file also stores whether it ran the full length and which termination
+# condition ended it (same three conditions as compute_hand_reward_finger), so the
+# classifier can be trained on fixed-length windows from the start of each episode.
 #
 # (target_episodes_per_class/max_control_steps/out_path/channels are not part of the
 # base Hydra config schema, so they need the leading "+" to be added as new keys.)
@@ -50,6 +58,19 @@ def read_frame(env, channels):
     return np.concatenate(parts, axis=1)  # (num_envs, sum(channel widths))
 
 
+def end_conditions(env):
+    """Per-env values of the three termination conditions, read right after env.step()
+    (before the next step's reset): tilt of the spin axis (deg), object x, distance to goal."""
+    import torch
+    from isaacgym.torch_utils import quat_rotate, quat_rotate_inverse
+    main = env.spin_axis
+    cur = quat_rotate(env.object_rot, quat_rotate_inverse(env.object_init_quat, main))
+    tilt = torch.rad2deg(torch.arccos(torch.clamp((main * cur).sum(-1), -1.0, 1.0)))
+    gd = torch.norm(env.object_pos - env.goal_pos, dim=-1)
+    z_off = env.object_init_pos[:, 2] - env.object_init_state[:, 2]
+    return (tilt.cpu().numpy(), env.object_pos[:, 0].cpu().numpy(), gd.cpu().numpy(), z_off.cpu().numpy())
+
+
 @hydra.main(config_name="config", config_path="../isaacgymenvs/cfg")
 def collect(cfg: DictConfig):
     from isaacgymenvs.utils.rlgames_utils import RLGPUEnv
@@ -70,6 +91,7 @@ def collect(cfg: DictConfig):
     cfg.task.env.deterministicObjectAssign = True
 
     target_episodes_per_class = cfg.get("target_episodes_per_class", 300)
+    target_full_per_class = cfg.get("target_full_per_class", 0)
     max_control_steps = cfg.get("max_control_steps", 2000)
     out_path = cfg.get("out_path", "tools/data/tactile_dataset.npz")
     channels = list(cfg.get("channels", ["tactile", "joint_pos"]))
@@ -105,8 +127,10 @@ def collect(cfg: DictConfig):
     obses = player.env_reset(env)
     player.get_batch_size(obses, 1)  # sets has_batch_dimension/batch_size (normally done inside player.run())
     per_env_buf = [[] for _ in range(num_envs)]
-    episodes = []  # list of (seq: (T, C) float32 array, label: int)
+    episodes = []  # list of (seq: (T, C) float32 array, label: int, meta: dict)
     episode_counts = np.zeros(num_classes, dtype=np.int64)
+    full_counts = np.zeros(num_classes, dtype=np.int64)
+    tilt_limit_deg = 0.4 * 180.0  # compute_hand_reward_finger: angle_difference > 0.4 * pi
 
     t0 = time.time()
     step = 0
@@ -116,6 +140,9 @@ def collect(cfg: DictConfig):
 
         frame = read_frame(env, channels)
         dones_np = dones.detach().cpu().numpy().astype(bool).reshape(-1)
+        if dones_np.any():
+            tilt, obj_x, goal_dist, z_off = end_conditions(env)
+            progress = env.progress_buf.detach().cpu().numpy()
 
         # Append THIS step's reading first, then finalize on done: the reset for a
         # done env only happens inside the NEXT env.step() call's pre_physics_step,
@@ -124,20 +151,30 @@ def collect(cfg: DictConfig):
             per_env_buf[e].append(frame[e])
             if dones_np[e]:
                 seq = np.stack(per_env_buf[e], axis=0).astype(np.float32)
-                label = int(obj_class[e])
-                episodes.append((seq, label))
-                episode_counts[label] += 1
                 per_env_buf[e] = []
+                if progress[e] <= 0:
+                    continue  # not a real rollout (reset again before taking a step)
+                label = int(obj_class[e])
+                full = bool(progress[e] >= max_episode_length - 1)
+                meta = dict(full=full,
+                            end_tilt=bool(not full and tilt[e] > tilt_limit_deg),
+                            end_x=bool(not full and obj_x[e] < 0.59),
+                            end_fall=bool(not full and goal_dist[e] >= env.fall_dist),
+                            z_off=float(z_off[e]))
+                episodes.append((seq, label, meta))
+                episode_counts[label] += 1
+                full_counts[label] += int(full)
 
         if (step + 1) % 50 == 0:
             elapsed = time.time() - t0
             print(f"[collect] step {step + 1}/{max_control_steps} "
                   f"({(step + 1) / max(elapsed, 1e-6):.2f} steps/s) | "
-                  f"episodes/class: {dict(zip(label_names, episode_counts.tolist()))}")
+                  f"episodes/class: {dict(zip(label_names, episode_counts.tolist()))} | "
+                  f"full: {full_counts.tolist()}")
 
-        if episode_counts.min() >= target_episodes_per_class:
+        if episode_counts.min() >= target_episodes_per_class and full_counts.min() >= target_full_per_class:
             print(f"[collect] reached target of {target_episodes_per_class} episodes/class "
-                  f"at step {step + 1}, stopping.")
+                  f"(and {target_full_per_class} full-length) at step {step + 1}, stopping.")
             break
     else:
         print(f"[collect] hit max_control_steps={max_control_steps} before every class reached "
@@ -149,7 +186,7 @@ def collect(cfg: DictConfig):
     if not episodes:
         raise RuntimeError("No complete episodes were collected -- increase max_control_steps.")
 
-    lengths = np.array([seq.shape[0] for seq, _ in episodes], dtype=np.int64)
+    lengths = np.array([seq.shape[0] for seq, _, _ in episodes], dtype=np.int64)
     if lengths.max() > max_episode_length:
         raise RuntimeError(f"Episode length {lengths.max()} exceeds max_episode_length="
                             f"{max_episode_length} -- padding array would be undersized.")
@@ -158,9 +195,10 @@ def collect(cfg: DictConfig):
     n = len(episodes)
     padded = np.zeros((n, max_episode_length, num_channels), dtype=np.float32)
     labels = np.zeros((n,), dtype=np.int64)
-    for i, (seq, label) in enumerate(episodes):
+    for i, (seq, label, _) in enumerate(episodes):
         padded[i, :seq.shape[0], :] = seq
         labels[i] = label
+    metas = [m for _, _, m in episodes]
 
     out_path = out_path if os.path.isabs(out_path) else to_absolute_path(out_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -171,6 +209,13 @@ def collect(cfg: DictConfig):
         labels=labels,
         label_names=np.array(label_names),
         channels=np.array(channels),
+        full_duration=np.array([m["full"] for m in metas]),
+        end_tilt=np.array([m["end_tilt"] for m in metas]),
+        end_x=np.array([m["end_x"] for m in metas]),
+        end_fall=np.array([m["end_fall"] for m in metas]),
+        z_offset=np.array([m["z_off"] for m in metas], dtype=np.float32),
+        control_dt=np.float32(env.dt * env.control_freq_inv),
+        obj_init_pos_z_high=np.float32(cfg.task.env.get("objInitPosZHigh", 0.01)),
     )
 
     print(f"\n[collect] saved {n} episodes to {out_path}")
@@ -183,7 +228,7 @@ def collect(cfg: DictConfig):
             continue
         l = lengths[mask]
         print(f"  {label_names[c]:12s}: n={mask.sum():4d} min={l.min():3d} mean={l.mean():6.1f} "
-              f"median={np.median(l):6.1f} max={l.max():3d}")
+              f"median={np.median(l):6.1f} max={l.max():3d} full={full_counts[c]}")
 
 
 if __name__ == "__main__":

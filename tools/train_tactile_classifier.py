@@ -8,9 +8,17 @@
 # Usage (from the repo root, in the project's conda env):
 #   python tools/train_tactile_classifier.py
 #   python tools/train_tactile_classifier.py --data tools/data/tactile_dataset.npz --epochs 50
+#   python tools/train_tactile_classifier.py --window-sec 5 --out-json results.json --save-model k5.pt
+#
+# --window-sec K: classify from the first K seconds of each episode only. Episodes shorter than
+# K seconds are left out, and every remaining sequence is cut to exactly K seconds, so all inputs
+# have the same length and how/when an episode ended cannot leak into the prediction.
+# The train/val/test split is made once over ALL episodes (stratified by label, fixed seed) and
+# only then filtered by length, so an episode stays in the same split for every K.
 
 import argparse
 import copy
+import json
 
 import numpy as np
 import torch
@@ -68,7 +76,8 @@ class TactileCNN(nn.Module):
 
 def load_dataset(path):
     d = np.load(path, allow_pickle=False)
-    return d["tactile"], d["lengths"], d["labels"], list(d["label_names"]), list(d["channels"])
+    control_dt = float(d["control_dt"]) if "control_dt" in d.files else 0.1
+    return d["tactile"], d["lengths"], d["labels"], list(d["label_names"]), list(d["channels"]), control_dt
 
 
 def select_channels(data, stored_channels, wanted_channels):
@@ -129,19 +138,40 @@ def main():
     parser.add_argument("--channels", default=None,
                          help="comma-separated subset of the dataset's stored channels to train on "
                               "(default: use everything in the file), e.g. --channels joint_pos")
+    parser.add_argument("--window-sec", type=float, default=None,
+                         help="use only the first K seconds of episodes that lasted at least K seconds")
+    parser.add_argument("--split-seed", type=int, default=42,
+                         help="seed of the train/val/test split (kept separate from --seed so model "
+                              "init can vary while the split stays fixed)")
+    parser.add_argument("--out-json", default=None, help="write test metrics here")
+    parser.add_argument("--save-model", default=None, help="save the best (val) model state_dict here")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    tactile, lengths, labels, label_names, channels = load_dataset(args.data)
+    tactile, lengths, labels, label_names, channels, control_dt = load_dataset(args.data)
     wanted = args.channels.split(",") if args.channels else None
     tactile, channels = select_channels(tactile, channels, wanted)
     num_classes = len(label_names)
     print(f"[train] loaded {len(labels)} episodes, channels={channels}, classes={label_names}")
 
-    train_idx, val_idx, test_idx = stratified_splits(labels, args.seed)
+    train_idx, val_idx, test_idx = stratified_splits(labels, args.split_seed)
+    window_steps = None
+    if args.window_sec is not None:
+        window_steps = int(round(args.window_sec / control_dt))
+        full_len = int(lengths.max())  # a full episode times out at max_episode_length - 1 = 499 steps
+        if window_steps > full_len:
+            print(f"[train] --window-sec {args.window_sec:g} = {window_steps} steps is longer than a full "
+                  f"episode ({full_len} steps); using full-length episodes only")
+            window_steps = full_len
+        keep = lengths >= window_steps
+        train_idx, val_idx, test_idx = (i[keep[i]] for i in (train_idx, val_idx, test_idx))
+        tactile = tactile[:, :window_steps]
+        lengths = np.minimum(lengths, window_steps)
+        print(f"[train] window: first {args.window_sec:g} s = {window_steps} control steps; "
+              f"kept {keep.sum()}/{len(keep)} episodes that lasted at least that long")
     print(f"[train] split sizes: train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}")
 
     def make_loader(idx, shuffle):
@@ -184,13 +214,25 @@ def main():
     all_labels = np.concatenate(all_labels)
 
     print("\n[train] per-class test accuracy:")
+    per_class = {}
     for c, name in enumerate(label_names):
         mask = all_labels == c
         if mask.any():
             acc = (all_preds[mask] == all_labels[mask]).mean()
+            per_class[name] = {"acc": float(acc), "n": int(mask.sum())}
             print(f"  {name:12s}: {acc:.3f} (n={mask.sum()})")
 
     cm = confusion_matrix(all_labels, all_preds, labels=list(range(num_classes)))
+    if args.out_json:
+        with open(args.out_json, "w") as f:
+            json.dump(dict(data=args.data, channels=channels, window_sec=args.window_sec, window_steps=window_steps,
+                           seed=args.seed, split_seed=args.split_seed, epochs=args.epochs,
+                           n_train=int(len(train_idx)), n_val=int(len(val_idx)), n_test=int(len(test_idx)),
+                           best_val_acc=float(best_val_acc), test_acc=float(test_acc),
+                           label_names=label_names, per_class=per_class, confusion=cm.tolist()), f, indent=1)
+    if args.save_model:
+        torch.save(dict(state_dict=model.state_dict(), in_channels=tactile.shape[-1], num_classes=num_classes,
+                        channels=channels, label_names=label_names, window_steps=window_steps), args.save_model)
     print("\n[train] confusion matrix (rows=true, cols=predicted):")
     header = " " * 13 + " ".join(f"{n[:8]:>8s}" for n in label_names)
     print(header)

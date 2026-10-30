@@ -4,7 +4,7 @@
 
 이 문서는 이 코드를 처음 이어받는 사람/에이전트가 배경 설명 없이 바로 작업을 이어갈 수 있도록 작업 이력, 설계 근거, 그리고 **반드시 알아야 할 함정들**을 정리한 것입니다.
 
-## 현재 상태 요약 (가장 먼저 읽을 것, 2026-10-28 기준)
+## 현재 상태 요약 (가장 먼저 읽을 것, 2026-10-30 기준)
 
 1. **개발 PC가 2026-10-23에 포맷되었습니다.** 새 공용 PC(`C:\YangJaehong`)에 저장소를 다시 clone하고 WSL2 환경을 처음부터 다시 설치했습니다([실행 환경](#실행-환경-wsl2)). gitignored였던 `runs/`(체크포인트), `wandb/`, `tools/data/`는 모두 사라졌습니다. **학습된 체크포인트는 하나도 남아 있지 않으므로, policy가 필요하면 재학습해야 합니다.**
 2. **9/29 이후 작업 중 push되지 않았던 커밋(`025d2e7`)은 사라졌고**, 기억과 wandb 기록을 바탕으로 복원해 `e1adb7f`로 push했습니다. 복원한 내용:
@@ -15,7 +15,12 @@
    - 평가 스크립트에서 길이 0인 에피소드 제외
 3. **README는 복원 시점(10/23)의 코드 기준입니다.** 10/20 학습 당시 코드와 완전히 같다는 보장은 없습니다. 알려진 차이는 [학습 기록](#학습-기록-wandb)에 정리했습니다.
 4. **2026-10-28 스모크 테스트로 위 복원 내용이 실제 시뮬레이션에 반영되는 것을 확인했습니다** — [스모크 테스트 결과](#스모크-테스트-결과-2026-10-28). 같은 날 매 step 물체 질량을 env마다 다시 읽던 코드를 캐시(`object_env_masses`)로 바꿨습니다(결과 동일, 속도 차이는 거의 없음).
-5. 바로 다음 할 일: 본 학습(`bash scripts/train_z_axis.sh 0`)으로 체크포인트를 확보하는 것(2026-10-28 시작, [학습 기록](#학습-기록-wandb) 참고). 그 뒤 [물체별 회전 성능 평가](#물체별-회전-성능-평가)와 [촉각 기반 물체 분류](#촉각-기반-물체-분류)를 새 체크포인트로 다시 돌릴 수 있습니다.
+5. **본 학습 `rws2-retrain`이 2026-10-30에 끝났습니다**(44.5h, best rolling reward 963.24). 체크포인트는 [GitHub Release `ckpt-rws2-retrain-20261028`](https://github.com/hongiyoyo/rotating-without-seeing/releases/tag/ckpt-rws2-retrain-20261028)에 백업했고, best 체크포인트의 [물체별 평가](#결과-2026-10-30-rws2-retrain-best-체크포인트)도 다시 돌렸습니다. 이 학습의 wandb 그래프는 epoch 302에서 멈췄습니다([wandb 로깅](#wandb-로깅) 참고).
+6. **2026-10-30 분석** ([실패 원인 분석](#실패-원인-분석-2026-10-30), [평가 조건](#평가-조건-학습-0-10mm-vs-논문-평가-0-1mm)):
+   - 완주 못한 에피소드의 80% 이상이 **"기울어짐 > 72°" 종료 조건** 하나로 끝납니다. 약 10%는 시작 0.2~0.5초 만에 끝나는데, 물체를 0~10mm 위에서 떨어뜨려 손 안에서 구르는 것이 큰 원인입니다(Isaac Gym 뷰어로 확인).
+   - 그래서 **논문용 평가는 물체를 0~1mm 위에만 놓습니다**(`task.env.objInitPosZHigh=0.001`, 학습은 0~10mm 그대로). 이 조건에서 완주율 62.1%, 회전 속도 0.204 rev/s.
+   - **촉각 분류를 회전 시간 K초별로 다시 학습**했습니다(0~1mm 조건): 촉각+관절로 K=5초 62.4%, K=50초(완주) 94.8% — [촉각 기반 물체 분류](#촉각-기반-물체-분류).
+   - 데이터·분류기·전체 체크포인트·로그는 [GitHub Release `data-rws2-retrain-20261030`](https://github.com/hongiyoyo/rotating-without-seeing/releases/tag/data-rws2-retrain-20261030)에, 결과 페이지 HTML은 `docs/reports/`에 있습니다.
 
 ## 실행 환경 (WSL2)
 
@@ -251,6 +256,9 @@ rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄�
 - `allegro_arm_morb_axis.py`의 `reset_idx`가 에피소드 종료 시 `{obj, rotations, ep_len, ep_reward}`를 `_pending_obj_stats`에 쌓고, `isaacgymenvs/utils/rlgames_utils.py`의 `RLGPUAlgoObserver.after_print_stats`가 매 epoch `PerObject/{obj}/rotation_count|episode_length|episode_reward`를 tensorboard에 기록합니다. `train.py`의 `wandb.init(sync_tensorboard=True)` 덕분에 wandb에도 자동 반영됩니다. 콘솔에는 `[PerObject reward] epoch N | block_1: ... | ...`로 출력됩니다.
 - **wandb에는 체크포인트(`.pth`)가 올라가지 않습니다.** 올라가는 것은 설정(`config.yaml`), 콘솔 로그(`output.log`), tensorboard 이벤트 파일, git 커밋 해시(커밋 안 된 변경이 있으면 `diff.patch`)입니다. PC가 날아가면 체크포인트는 복구할 수 없으니 **중요한 체크포인트는 따로 백업하세요.**
 - 프로젝트: `jhyang321-seoul-national-university/isaacgymenvs`
+- **2026-10-28 `rws2-retrain`(`lxgr93nn`)은 wandb 그래프가 epoch 302(시작 1시간 뒤)에서 멈췄습니다.** 학습 자체는 끝까지 정상이었고, 콘솔 로그와 시스템 지표는 끝까지 올라갔습니다. wandb가 tensorboard 파일을 읽어 지표로 바꾸는 단계(`sync_tensorboard`)만 조용히 멈춘 것입니다(로컬 `.wandb` 파일에도 epoch 302 이후 지표 없음, 에러 메시지도 없음). 원인은 확인하지 못했습니다. 같은 프로세스에서 `/mnt/c`(Windows 드라이브) 위의 파일을 읽다가 `no data available` 에러가 난 기록이 있어서, WSL의 Windows 드라이브 파일 읽기 문제일 가능성이 있습니다. 10/20 학습(옛 PC, 같은 wandb 0.24.2)은 끝까지 올라갔습니다.
+  - **전체 지표는 로컬 tensorboard 파일**(`runs/z-axis-touch-only/<run>/summaries/`, Release의 `tensorboard_summaries.zip`)**에 다 남아 있습니다.** `tensorboard --logdir runs/z-axis-touch-only`로 보거나, `wandb sync`로 다시 올릴 수 있습니다.
+  - 다음 학습에서 같은 일이 생기면, `runs/`를 Linux 쪽 경로(`~/...`)에 두거나 `RLGPUAlgoObserver`에서 `wandb.log`로 직접 기록하는 방법을 검토하세요.
 
 ## 학습 기록 (wandb)
 
@@ -260,7 +268,7 @@ rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄�
 | 2026-09-29 | `rws-set16` (`adrn0fwz`) | `71e2df7` | 16개 | 30분 만에 crash | 없음 |
 | 2026-10-20 | `rws2-randinit` (`5ng9uo5d`) | `3e0c2fe` | 9개 | 12분 후 중단 | 없음 |
 | 2026-10-20 | `rws2-randinit-zup` (`im67809a`) | `025d2e7` (push 안 됨, 사라짐) | 9개 | 20,100 epoch 완주(45.4h), best **826.83** (epoch 19605), 마지막 740.65 | 사라짐 |
-| 2026-10-28 | `rws2-retrain` (`lxgr93nn`) | `8048f74` + 질량 캐시/README 수정(시작 시점 미커밋, wandb `diff.patch`에 기록) | 9개 | 진행 중 (새 PC, 8192 env, 예상 ~45h) | `runs/z-axis-touch-only/` — **끝나면 저장소 밖에 백업** |
+| 2026-10-28 | `rws2-retrain` (`lxgr93nn`) | `8048f74` + 질량 캐시/README 수정(시작 시점 미커밋, wandb `diff.patch`에 기록) | 9개 | 20,100 epoch 완주(44.5h, 새 PC), best **963.24** (epoch ~17511), 마지막 809.63. wandb 그래프는 epoch 302까지만 | [Release `ckpt-rws2-retrain-20261028`](https://github.com/hongiyoyo/rotating-without-seeing/releases/tag/ckpt-rws2-retrain-20261028) (best, ep20100, config, tensorboard, 로그) |
 
 10/20 `rws2-randinit-zup` 마지막 epoch 물체별 reward: block_1 834, block_2 615, block_3 417, block_4 683, block_5 674, cylinder_1 905, cylinder_2 547, cylinder_3 957, cylinder_4 1121.
 
@@ -274,6 +282,51 @@ rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄�
 10/20 run의 `config.yaml`/`output.log`/tensorboard 파일은 저장소 밖 `C:\YangJaehong\wandb_recovery\`에 내려받아 두었습니다(wandb에서 다시 받을 수도 있음).
 
 ## 물체별 회전 성능 평가
+
+### 결과 (2026-10-30, `rws2-retrain` best 체크포인트)
+
+체크포인트: Release의 `rws2-retrain_best.pth`(= `nn/z-axis-touch-only.pth`, best rolling reward 963.24). 900 env, 물체당 300 에피소드 이상, 결정론적 행동, 초기 위치/yaw 랜덤화가 실제로 적용된 상태, 길이 0 에피소드(시작 시 env당 1개, 900개) 제외. 회전 속도 = 총 회전 수 / 총 시간(제어 주기 0.1s). 결과 파일: `tools/data/policy_eval.npz`(gitignored).
+
+| 물체 | n | reward (mean) | 회전 속도 (rev/s) | 완주율 (499 step) |
+|---|---|---|---|---|
+| block_1 | 310 | 1004.57 | 0.194 | 85.8% |
+| block_2 | 410 | 628.06 | 0.173 | 47.8% |
+| block_3 | 363 | 768.52 | 0.181 | 59.5% |
+| block_4 | 464 | 712.11 | 0.247 | 42.5% |
+| block_5 | 345 | 806.72 | 0.185 | 68.4% |
+| cylinder_1 | 326 | 992.35 | 0.224 | 74.8% |
+| cylinder_2 | 436 | 601.94 | 0.189 | 47.2% |
+| cylinder_3 | 324 | 955.66 | 0.219 | 75.3% |
+| cylinder_4 | 400 | 749.87 | 0.222 | 52.0% |
+| **전체** | **3,378** | **785.13** | **0.204** | **59.6%** |
+
+- 가장 약한 물체는 cylinder_2(602)와 block_2(628)입니다. 학습 로그에서도 cylinder_2가 학습 내내 가장 낮았습니다.
+- 회전 속도는 총 회전 수 / 총 생존 시간(시간 가중)입니다. 아래 8월 결과의 회전 속도는 에피소드별 평균이라 정의가 다르므로 직접 비교하지 마세요.
+- 위 표는 학습과 같은 배치 높이(0~10mm) 조건입니다. 논문용 0~1mm 조건 결과는 [평가 조건](#평가-조건-학습-0-10mm-vs-논문-평가-0-1mm) 참고.
+
+### 실패 원인 분석 (2026-10-30)
+
+- **종료 조건** (`compute_hand_reward_finger`): ① 물체 회전축이 0.4π(72°) 넘게 기울어짐, ② 물체 x < 0.59m, ③ 목표 위치에서 ≥ 10cm(`fallDistance`). 물체 기본 시작 x는 0.63이라 초기 x 랜덤화(±1.5cm)로 ②에 걸리지는 않습니다.
+- 0~10mm 평가를 다시 돌려 종료 원인을 기록한 결과(3,356 에피소드), 실패 1,368개 중 **기울어짐만 83%**, 기울어짐+이탈 7%, 이탈만 5%, x만 4%.
+- **초반 실패**: 약 10%가 2~5 step(0.2~0.5초)에 기울어짐으로 끝납니다. 행동을 0으로 두면 0.7%뿐이라 정책의 첫 동작이 넘어뜨리는 것이고, block_4·cylinder류가 17~25%로 특히 많습니다. 시작 높이가 높을수록 늘어납니다(1초 내 종료: z 0~2mm 5.3% → 8~10mm 13.2%).
+- 실패 장면은 `tools/analysis/`의 녹화·재생 도구로 Isaac Gym 뷰어에서 실제 속도로 볼 수 있습니다([분석 도구](#분석-도구-toolsanalysis)).
+
+### 평가 조건: 학습 0~10mm vs 논문 평가 0~1mm
+
+같은 체크포인트, 900 env, 결정론적, 물체당 300개 이상. 평가 명령에 `task.env.objInitPosZHigh=0.001`만 추가(x, y, yaw 랜덤화는 그대로).
+
+| | 0~10mm (학습 조건) | 0~1mm (논문 평가) |
+|---|---|---|
+| 완주율 | 59.6% | **62.1%** |
+| 1초 안에 종료 | 10.2% | **6.8%** |
+| 평균 reward | 785 | **819** |
+| 회전 속도 (rev/s) | 0.204 | 0.204 |
+
+- 효과는 잘 구르는 물체에 몰려 있습니다(cylinder_4 완주율 52% → 64%). 나머지 물체 변화는 대부분 오차(물체당 약 ±5%p) 범위 안.
+- 0~1mm에서도 block_4, cylinder_2, cylinder_4는 12~13%가 1초 안에 끝납니다. 높이 외에 초반 동작 자체의 문제가 남아 있습니다.
+- 결과 파일: `tools/data/policy_eval_z1mm.npz` (Release에도 있음). 결과 페이지: `docs/reports/eval_z1mm.html`, 비교: `docs/reports/eval_compare_height.html`.
+
+### 8월 체크포인트 결과에 대해
 
 **아래 결과는 8월 9-object 체크포인트(best 974.54) 기준입니다.** 물체 이름은 지금과 같지만, 그 체크포인트는 사라졌고 당시에는 초기 위치/yaw 랜덤화가 실제로 반영되지 않았습니다([함정 #7](#7-reset-중-set_actor_rigid_body_properties가-물체-위치자세-쓰기를-지움)). 또 이 결과에는 **길이 0인 에피소드가 포함**되어 있습니다(물체마다 25% 이상이 생존 시간 0). 현재 스크립트는 이를 제외하므로, 다시 돌리면 수치가 달라집니다.
 
@@ -315,7 +368,27 @@ rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄�
 
 ## 촉각 기반 물체 분류
 
-**아래 결과도 8월 9-object 체크포인트 기준입니다**(데이터·체크포인트는 사라짐, 물체 이름은 지금과 같음). 파이프라인 코드는 클래스 수 무관하게 동작하므로 새 체크포인트로 그대로 재현할 수 있습니다.
+### 결과 (2026-10-30, `rws2-retrain`, 0~1mm, 회전 시간 K별)
+
+각 에피소드의 **처음 K초**만 잘라 분류합니다(K초 이상 버틴 에피소드만 사용, K=50은 완주 에피소드 = 499 step). 분할(70/15/15)은 모든 에피소드에서 한 번 고정(split seed 42)한 뒤 길이로 거르므로 한 에피소드는 모든 K에서 같은 쪽입니다. 초기화 시드 3개 평균. 데이터 3,278 에피소드(물체마다 완주 200개 이상).
+
+| K | 촉각만 | 관절만 | 촉각+관절 | 테스트 에피소드 |
+|---|---|---|---|---|
+| 1초 | 25.6% | 38.5% | 36.8% | 459 |
+| 2초 | 42.1% | 52.5% | 53.8% | 452 |
+| 5초 | 56.5% | 61.4% | 62.4% | 403 |
+| 10초 | 63.4% | 81.0% | 75.3% | 366 |
+| 20초 | 74.3% | 87.4% | 88.9% | 344 |
+| 50초 | 84.2% | 89.5% | **94.8%** | 299 |
+
+- **K초 판단 후 물체별 policy로 전환하려면 K초 분류기를 씁니다**(입력 분포가 같아야 함). K=5에서는 block_4 99%, cylinder_2 88%지만 block_5 25%, cylinder_1 37%라 아직 부족합니다.
+- K=10에서 관절만 > 촉각+관절인 역전은 분할 하나·시드 3개 결과라 확인 필요. K=50 물체별 수치는 테스트가 물체당 약 33개라 오차가 큽니다.
+- 결과: `tools/data/classifier_z1mm/k{K}_{채널}_s{시드}.{json,pt,log}` (Release에 zip). 결과 페이지: `docs/reports/classifier_by_window.html`.
+- 재현: `tools/analysis/run_collect_z1mm.sh`(데이터) → `tools/analysis/run_classifiers.sh`(54개 학습) → `tools/analysis/agg_classifiers.py`(집계).
+
+### 8월 결과에 대해
+
+**아래 8월 결과는 8월 9-object 체크포인트 기준입니다**(데이터·체크포인트는 사라짐, 물체 이름은 지금과 같음). 당시에는 길이와 상관없이 에피소드 전체를 넣었기 때문에, 0.2초 만에 끝난 에피소드나 넘어지는 패턴 자체가 섞여 있어 위 K별 결과와 직접 비교할 수 없습니다.
 
 **목표**: policy가 실제로 받는 센서값의 시계열만으로 9개 물체 중 무엇인지 맞히는 별도 CNN 분류기 학습(형상 재구성 아님, 분류만). 정책 자신은 물체 정체성을 모릅니다 — `object_one_hot_vector`는 critic 전용 `states_buf`에만 쓰이고 actor 관측(`last_obs_buf`/`obs_buf`)에는 들어가지 않습니다.
 
@@ -324,7 +397,8 @@ rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄�
 1. **`tools/collect_tactile_data.py`** — 결정론적 롤아웃을 돌리면서 매 control step `sensed_contacts`(촉각 16채널, 노이즈/threshold/lag 적용된 값)와 `last_obs_buf[:, 6:22]`(관절위치 16채널)를 env별로 버퍼링하다가, 에피소드 종료 시 (T, 32) 시퀀스를 물체 라벨과 함께 저장.
    - `task.env.deterministicObjectAssign=True`로 클래스 균형.
    - 기본값: `numEnvs=900`, `target_episodes_per_class=300`, `max_control_steps=2000`.
-   - 결과: `tools/data/tactile_dataset.npz` — `tactile: (N, 500, 32)`(뒤쪽 0-padding), `lengths`, `labels`, `label_names`, `channels`.
+   - 결과: `tools/data/tactile_dataset.npz` — `tactile: (N, 500, 32)`(뒤쪽 0-padding), `lengths`, `labels`, `label_names`, `channels`, 그리고 (2026-10-30부터) `full_duration`, `end_tilt/end_x/end_fall`(종료 조건), `z_offset`, `control_dt`, `obj_init_pos_z_high`.
+   - `+target_full_per_class=N`: 물체마다 완주 에피소드가 N개 모일 때까지 수집(긴 K 분류기용). 길이 0 에피소드는 저장하지 않습니다.
    - 실행 예:
      ```bash
      python tools/collect_tactile_data.py \
@@ -335,6 +409,7 @@ rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄�
 2. **`tools/train_tactile_classifier.py`** — 라벨 층화 70/15/15 분할(seed 고정) 후, masked-average-pooling 1D-CNN(Conv1d 32→64→128) + FC(128→64→N)로 50 epoch 학습.
    - `--channels tactile` / `--channels joint_pos`로 채널 일부만 학습 가능. `CHANNEL_WIDTHS`는 `collect_tactile_data.py`와 같아야 함(isaacgym 의존성을 피하려고 import 대신 값만 복제).
    - 실행 예: `python tools/train_tactile_classifier.py --data tools/data/tactile_dataset.npz --epochs 50`
+   - `--window-sec K`(처음 K초만, K초 미만 에피소드 제외), `--split-seed`(분할 고정, `--seed`는 초기화), `--out-json`, `--save-model`.
 
 ### 결과 (8월 체크포인트, 3,230 에피소드)
 
@@ -348,11 +423,30 @@ rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄�
 
 **핵심 발견**: 정책은 촉각 전용으로 학습됐는데도 **촉각 단독이 가장 낮은 분류 정확도**를 냈고, 세 조합이 **서로 다른 물체 쌍에서 실패**했습니다(촉각+관절은 block_3/block_5, 촉각만·관절만은 cylinder_1/cylinder_3). 촉각과 관절위치가 **상호보완적인 형상 단서**를 담고 있다는 뜻입니다.
 
+## 분석 도구 (`tools/analysis/`)
+
+2026-10-28~30 분석에 쓴 스크립트 그대로입니다. 경로가 이 PC 기준(`/mnt/c/YangJaehong/...`)으로 박혀 있어서, 다른 위치에서 쓰려면 맨 위 경로 상수를 고치세요. `.sh`는 WSL에서 실행합니다.
+
+| 파일 | 용도 |
+|---|---|
+| `env_check.py` | 학습 없이 환경만 검증: 설정값, 관측 340차원, 질량, reset 때 써 넣은 초기 위치/yaw가 시뮬레이터에 반영되는지(함정 #7) |
+| `early_term.py`, `early_term_policy.py` | 시작 직후 종료되는 에피소드가 어떤 종료 조건에 걸리는지(행동 0 / 실제 정책) |
+| `record_failed_episodes.py` | 평가 조건으로 정책을 돌리며 한 물체의 실패 에피소드를 물리 스텝(1/60초)마다 녹화. `TARGET=cylinder_2 PICK=5`처럼 물체와 개수(길이 분포에서 고르게) 지정 |
+| `replay_viewer.py` | 녹화본을 Isaac Gym 뷰어에서 실제 속도로 재생. 끝나면 멈추고 종료 원인을 화면에 표시. SPACE 다음, R 다시, B 이전, ESC 종료. `--sort len`, `--start N` |
+| `record_reset_reasons.py` | 평가를 같은 설정·시드로 돌리며 모든 에피소드의 종료 원인 기록(`OUT=...`, 뒤에 hydra override) |
+| `run_collect_z1mm.sh`, `run_classifiers.sh`, `agg_classifiers.py` | 0~1mm 촉각 데이터 수집 → K별 분류기 54개 학습 → 집계 |
+| 그 밖의 `*.py` | 결과 페이지(`docs/reports/`)용 데이터 생성 |
+
+**PowerShell에서 오래 걸리는 WSL 작업을 띄울 때**: `Start-Process wsl.exe -ArgumentList ...,"bash","-c","... > log"`처럼 리다이렉션을 인자로 넘기면 따옴표가 깨져 빈 bash만 뜹니다. 리다이렉션은 `.sh` 안에 넣고 `bash 파일.sh`로 실행하세요.
+
 ## 다음 할 일
 
-- **최우선**: 현재 기본 설정(9개 물체, 초기 자세 랜덤화 수정, DR ramp 꺼짐)으로 본 학습을 다시 돌려 체크포인트 확보 → **완료되면 `runs/`의 best 체크포인트를 저장소 밖에도 백업**
-- 새 체크포인트로 `evaluate_policy_per_object.py`(길이 0 제외) 재평가 → 8월 결과와 비교
-- 초기 자세 랜덤화가 실제로 들어간 학습이 8월(974.54)/10월(826.83) 학습과 비교해 어떤지 확인
+- ~~본 학습으로 체크포인트 확보 + 백업~~ (2026-10-30 완료, `rws2-retrain`)
+- ~~새 체크포인트로 물체별 재평가~~ (2026-10-30 완료)
+- 체크포인트 선택: rl_games의 best는 "전체 에피소드 평균 reward" 기준입니다. 저장된 `last_*_ep_<N>_*.pth`(100 epoch 간격) 중 후보 몇 개(예: ep 17400 = 학습 로그상 가장 약한 물체 reward 최대, ep 20000 = 물체 평균 최대, ep 20100)를 평가 스크립트로 비교해서 목적에 맞는 것을 고를 수 있습니다.
+- cylinder_2, block_2 성능 개선
+- 초반 기울어짐 실패 줄이기: 시작 후 몇 step 기울어짐 종료 유예, 학습 배치 높이 낮추기 등(재학습 필요)
 - `forceObject` 키의 용도 확인(10/20 학습 설정에만 있음)
-- 촉각 분류 파이프라인을 새 체크포인트로 재실행
+- ~~촉각 분류 파이프라인을 새 체크포인트로 재실행~~ (2026-10-30 완료, K별)
+- 분류 결과 보강: 분할을 바꿔 반복(예: 5-fold)해 K=10 역전 확인, 완주 에피소드를 물체당 500개 정도로 늘려 K=50 물체별 오차 줄이기
 - (기존 TODO) 분류기 precision/F1, prev_action 등 다른 관측 채널 추가, x/y축 회전, distillation(학생 정책)

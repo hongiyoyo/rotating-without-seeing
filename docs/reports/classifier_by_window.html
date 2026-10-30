@@ -1,0 +1,317 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>촉각 물체 분류 정확도</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: same report system as the rws2-retrain evaluation pages; hero curve first, then per-object detail. */
+  :root {
+    --bg: #f7f7f5; --panel: #fcfcfb; --panel-2: #f0efeb; --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #898781;
+    --line: #e1e0d9; --line-strong: #c3c2b7; --accent: #2a78d6;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a;          /* categorical slots 1-3: tactile+joint, tactile, joint */
+    --seq-lo: #d9e8fb; --seq-hi: #0d366b;                 /* sequential blue */
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #101211; --panel: #1a1a19; --panel-2: #212220; --ink: #ffffff; --ink-2: #c3c2b7; --ink-3: #8f8e88;
+    --line: #2c2c2a; --line-strong: #3a3a37; --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --seq-lo: #20252c; --seq-hi: #7db4f2; color-scheme: dark; } }
+  :root[data-theme="dark"] {
+    --bg: #101211; --panel: #1a1a19; --panel-2: #212220; --ink: #ffffff; --ink-2: #c3c2b7; --ink-3: #8f8e88;
+    --line: #2c2c2a; --line-strong: #3a3a37; --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --seq-lo: #20252c; --seq-hi: #7db4f2; color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-block: 44px 88px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  code { font-family: var(--mono); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
+  header.page { display: flex; flex-direction: column; gap: 14px; padding-bottom: 32px; margin-bottom: 32px; border-bottom: 1px solid var(--line); }
+  .eyebrow { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { font-size: clamp(25px, 4vw, 36px); line-height: 1.18; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+  .sub { max-width: 74ch; color: var(--ink-2); font-size: 15px; margin: 0; }
+  .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .stat { background: var(--panel); padding: 16px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .stat .label { font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); }
+  .stat .value { font-family: var(--mono); font-size: 23px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .stat .foot { font-size: 11.5px; color: var(--ink-3); }
+  @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 26px 26px 22px; margin-bottom: 26px; }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .panel-title { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  .panel-desc { font-size: 13.5px; color: var(--ink-2); margin: 6px 0 18px; max-width: 82ch; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); align-items: center; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .sw-line { width: 16px; height: 2px; border-radius: 1px; }
+  .callout { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-size: 13.5px; color: var(--ink-2); }
+  .callout ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+  .callout b { color: var(--ink); }
+
+  .chart-holder { position: relative; }
+  svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .axis-label { font-size: 11px; fill: var(--ink-3); font-family: var(--mono); }
+  .axis-title { font-size: 11px; fill: var(--ink-2); }
+  .tooltip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 11.5px; padding: 7px 10px;
+    border-radius: 6px; font-family: var(--mono); white-space: nowrap; opacity: 0; transition: opacity .08s; z-index: 5; transform: translate(-50%, -110%); line-height: 1.55; }
+  .tooltip.show { opacity: 1; }
+
+  .controls { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; }
+  .seg button { font: inherit; font-size: 12px; padding: 5px 11px; border: 0; background: var(--panel); color: var(--ink-2); cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line-strong); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .ctl-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); margin-right: 8px; }
+
+  .heat-wrap { overflow-x: auto; }
+  table.heat { border-collapse: separate; border-spacing: 2px; font-size: 12px; }
+  table.heat th { font-weight: 600; font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: 4px 8px; white-space: nowrap; }
+  table.heat th.row { text-align: right; font-family: var(--mono); text-transform: none; font-size: 11.5px; color: var(--ink-2); letter-spacing: 0; }
+  table.heat td { min-width: 62px; height: 32px; text-align: center; font-family: var(--mono); font-variant-numeric: tabular-nums; border-radius: 4px; }
+  table.heat.cm td { min-width: 48px; height: 30px; font-size: 11px; }
+  table.heat td.diag { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .two-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+
+  table.plain { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.plain th, table.plain td { padding: 7px 9px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.plain th:first-child, table.plain td:first-child { text-align: left; }
+  table.plain th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-3); font-weight: 600; border-bottom: 1px solid var(--line-strong); }
+  table.plain td { font-family: var(--mono); }
+  .table-wrap { overflow-x: auto; }
+  footer.page { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+  a { color: var(--accent); }
+</style>
+
+<div class="wrap">
+  <header class="page">
+    <div class="eyebrow">Rotating Without Seeing &middot; rws2-retrain policy &middot; 물체 배치 높이 0~1mm &middot; 9-way 분류</div>
+    <h1>회전을 몇 초 하면 물체를 알아낼 수 있나</h1>
+    <p class="sub">
+      촉각 전용 회전 policy(rws2-retrain best)를 결정론적으로 굴리며 매 제어 주기(0.1초) 정책이 받는 센서값을 기록했습니다
+      (에피소드 3,278개, 배치 높이 0~1mm). 각 에피소드의 <b>처음 K초</b>만 잘라 1D-CNN으로 9개 물체를 분류했고,
+      K초 이상 버틴 에피소드만 씁니다. K = 50초는 완주한 에피소드 전체입니다. 학습/검증/테스트 분할(70/15/15)은 모든 에피소드에서 한 번 고정한 뒤
+      길이로 걸러서, 한 에피소드는 모든 K에서 같은 쪽에 있습니다. 각 조건은 초기화 시드 3개로 학습했습니다.
+    </p>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section class="panel">
+    <div class="panel-head"><div class="panel-title">요약</div></div>
+    <div class="callout" id="summary"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="panel-title">회전 시간 K에 따른 테스트 정확도</div>
+      <div class="legend" id="curve-legend"></div>
+    </div>
+    <p class="panel-desc">선은 시드 3개의 평균, 옅은 띠는 최소~최대입니다. x축은 로그 눈금입니다. 점선은 무작위로 찍었을 때의 정확도(1/9)입니다. 마우스를 올리면 값이 보입니다.</p>
+    <div class="chart-holder" id="curve-holder"><div class="tooltip" id="curve-tip"></div></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div class="panel-title">물체별 정확도</div></div>
+    <p class="panel-desc">각 칸은 해당 물체 테스트 에피소드 중 맞힌 비율(시드 3개 평균)입니다. 진할수록 정확합니다. 칸에 마우스를 올리면 테스트 에피소드 수가 보입니다.</p>
+    <div class="controls">
+      <div><span class="ctl-label">입력</span><span class="seg" id="ch-seg"></span></div>
+    </div>
+    <div class="heat-wrap"><table class="heat" id="heat"></table></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div class="panel-title">혼동 행렬</div></div>
+    <p class="panel-desc" id="cm-desc">&mdash;</p>
+    <div class="controls">
+      <div><span class="ctl-label">입력</span><span class="seg" id="cm-ch-seg"></span></div>
+      <div><span class="ctl-label">K</span><span class="seg" id="k-seg"></span></div>
+    </div>
+    <div class="heat-wrap"><table class="heat cm" id="cm"></table></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div class="panel-title">전체 수치</div></div>
+    <p class="panel-desc">정확도는 시드 3개의 평균 &plusmn; 표준편차. 에피소드 수는 K초 이상 버텨서 사용된 에피소드입니다.</p>
+    <div class="table-wrap"><table class="plain" id="table"></table></div>
+  </section>
+
+  <footer class="page">
+    Data: <code>tools/collect_tactile_data.py</code> with <code>task.env.objInitPosZHigh=0.001</code> &rarr; <code>tools/data/tactile_dataset_z1mm.npz</code>
+    (tactile = <code>sensed_contacts</code> 16 ch with the policy's sensor noise/threshold/lag; joint = <code>last_obs_buf[:, 6:22]</code> 16 ch).
+    Classifier: <code>tools/train_tactile_classifier.py --window-sec K</code>, masked-average-pooling 1D-CNN (Conv1d 32&rarr;64&rarr;128, FC 128&rarr;64&rarr;9),
+    50 epochs, best-validation checkpoint, split seed 42, init seeds 0/1/2. Results: <code>tools/data/classifier_z1mm/</code>.
+    Policy checkpoint: GitHub Release <a href="https://github.com/hongiyoyo/rotating-without-seeing/releases/tag/ckpt-rws2-retrain-20261028">ckpt-rws2-retrain-20261028</a>.
+  </footer>
+</div>
+
+<script>
+"use strict";
+const DATA = {"labels":["block_1","block_2","block_3","block_4","block_5","cylinder_1","cylinder_2","cylinder_3","cylinder_4"],"Ks":[1,2,5,10,20,50],"channels":["tactile","joint_pos","tactile+joint_pos"],"runs":{"1|tactile":{"acc":[0.2679738562091503,0.2570806100217865,0.2440087145969499],"n_train":2129,"n_val":460,"n_test":459,"per_class":[[0.022222222222222223,0.41935483870967744,0.24528301886792453,0.7,0.16326530612244897,0.05,0.35185185185185186,0.14893617021276595,0.10204081632653061],[0.13333333333333333,0.27419354838709675,0.2830188679245283,0.5666666666666667,0.1836734693877551,0.025,0.37037037037037035,0.0851063829787234,0.24489795918367346],[0.15555555555555556,0.43548387096774194,0.09433962264150944,0.5333333333333333,0.08163265306122448,0.05,0.42592592592592593,0.1702127659574468,0.08163265306122448]],"per_class_n":[45,62,53,60,49,40,54,47,49],"confusion":[[14,39,15,8,13,5,29,4,8],[20,70,14,15,15,5,35,7,5],[19,47,33,23,16,1,7,9,4],[8,11,9,108,11,4,4,7,18],[9,45,20,18,21,2,17,4,11],[9,21,8,9,1,5,32,17,18],[5,36,5,17,2,3,62,13,19],[9,14,6,9,0,7,50,19,27],[4,21,8,20,2,11,38,22,21]]},"1|joint_pos":{"acc":[0.4008714596949891,0.37037037037037035,0.38344226579520696],"n_train":2129,"n_val":460,"n_test":459,"per_class":[[0.3111111111111111,0.3548387096774194,0.5094339622641509,0.7833333333333333,0.08163265306122448,0.175,0.7777777777777778,0.10638297872340426,0.32653061224489793],[0.5333333333333333,0.7096774193548387,0.11320754716981132,0.5666666666666667,0.10204081632653061,0.175,0.5555555555555556,0.2553191489361702,0.16326530612244897],[0.13333333333333333,0.5806451612903226,0.11320754716981132,0.75,0.32653061224489793,0.025,0.7592592592592593,0.2978723404255319,0.22448979591836735]],"per_class_n":[45,62,53,60,49,40,54,47,49],"confusion":[[44,26,24,7,27,0,4,2,1],[15,102,25,5,16,0,15,5,3],[33,39,39,15,17,1,12,2,1],[6,11,12,126,0,2,11,0,12],[31,32,33,12,25,1,8,1,4],[0,5,9,15,0,15,25,32,19],[1,14,3,8,1,2,113,8,12],[7,7,4,20,0,24,28,31,20],[2,8,13,16,1,15,31,26,35]]},"1|tactile+joint_pos":{"acc":[0.37037037037037035,0.37254901960784315,0.3616557734204793],"n_train":2129,"n_val":460,"n_test":459,"per_class":[[0.5111111111111111,0.3870967741935484,0.2830188679245283,0.8166666666666667,0.12244897959183673,0.275,0.5555555555555556,0.06382978723404255,0.1836734693877551],[0.15555555555555556,0.41935483870967744,0.2830188679245283,0.7833333333333333,0.2857142857142857,0.05,0.6481481481481481,0.1702127659574468,0.3469387755102041],[0.35555555555555557,0.3709677419354839,0.37735849056603776,0.7833333333333333,0.02040816326530612,0.125,0.5370370370370371,0.14893617021276595,0.3673469387755102]],"per_class_n":[45,62,53,60,49,40,54,47,49],"confusion":[[46,26,25,6,18,1,9,2,2],[44,73,28,3,11,1,18,4,4],[32,32,50,12,21,0,5,1,6],[6,1,8,143,2,2,5,0,13],[31,37,42,3,21,1,4,0,8],[5,9,5,4,1,18,21,18,39],[7,15,7,5,1,4,94,6,23],[7,10,3,5,3,21,35,18,39],[5,4,7,11,5,17,25,29,44]]},"2|tactile":{"acc":[0.413716814159292,0.415929203539823,0.4336283185840708],"n_train":2111,"n_val":456,"n_test":452,"per_class":[[0.26666666666666666,0.43333333333333335,0.4423076923076923,0.8771929824561403,0.10204081632653061,0.05,0.6037735849056604,0.2765957446808511,0.4897959183673469],[0.17777777777777778,0.3333333333333333,0.5,0.9122807017543859,0.20408163265306123,0.55,0.41509433962264153,0.14893617021276595,0.42857142857142855],[0.06666666666666667,0.5666666666666667,0.34615384615384615,0.8771929824561403,0.40816326530612246,0.15,0.4528301886792453,0.48936170212765956,0.3673469387755102]],"per_class_n":[45,60,52,57,49,40,53,47,49],"confusion":[[23,24,29,4,33,6,7,4,5],[16,80,22,0,22,4,26,2,8],[16,20,67,11,14,3,7,1,17],[0,0,11,152,1,0,0,0,7],[27,21,39,15,35,0,9,0,1],[0,5,1,8,0,30,22,29,25],[1,7,5,2,1,18,78,32,15],[1,2,2,0,0,38,25,43,30],[0,5,3,16,0,24,6,30,63]]},"2|joint_pos":{"acc":[0.5398230088495575,0.5442477876106194,0.4911504424778761],"n_train":2111,"n_val":456,"n_test":452,"per_class":[[0.6,0.7,0.34615384615384615,0.9473684210526315,0.20408163265306123,0.375,0.7169811320754716,0.44680851063829785,0.3877551020408163],[0.3111111111111111,0.7333333333333333,0.36538461538461536,0.9649122807017544,0.32653061224489793,0.45,0.8490566037735849,0.14893617021276595,0.5714285714285714],[0.4444444444444444,0.8833333333333333,0.34615384615384615,0.9298245614035088,0.10204081632653061,0.3,0.660377358490566,0.40425531914893614,0.14285714285714285]],"per_class_n":[45,60,52,57,49,40,53,47,49],"confusion":[[61,26,16,0,31,1,0,0,0],[12,139,11,1,11,1,5,0,0],[37,37,55,1,21,2,1,2,0],[0,0,6,162,1,0,0,0,2],[57,38,19,2,31,0,0,0,0],[0,4,1,1,0,45,2,40,27],[0,12,0,0,0,8,118,16,5],[0,4,0,2,1,43,19,47,25],[0,1,0,3,0,37,4,48,54]]},"2|tactile+joint_pos":{"acc":[0.5442477876106194,0.5464601769911505,0.5243362831858407],"n_train":2111,"n_val":456,"n_test":452,"per_class":[[0.5777777777777777,0.6666666666666666,0.5961538461538461,0.9649122807017544,0.061224489795918366,0.15,0.7735849056603774,0.23404255319148937,0.673469387755102],[0.5111111111111111,0.6333333333333333,0.5192307692307693,1.0,0.2653061224489796,0.2,0.7924528301886793,0.23404255319148937,0.5714285714285714],[0.7555555555555555,0.6833333333333333,0.34615384615384615,0.8596491228070176,0.02040816326530612,0.075,0.6981132075471698,0.44680851063829785,0.673469387755102]],"per_class_n":[45,60,52,57,49,40,53,47,49],"confusion":[[83,21,10,0,21,0,0,0,0],[29,119,13,0,11,2,3,0,3],[40,22,76,3,10,0,1,1,3],[0,2,3,161,0,0,0,0,5],[75,24,29,2,17,0,0,0,0],[0,6,0,3,0,17,17,23,54],[0,8,1,0,0,3,120,22,5],[0,5,0,1,0,28,23,43,41],[0,3,2,5,0,22,6,15,94]]},"5|tactile":{"acc":[0.5856079404466501,0.5533498759305211,0.5558312655086849],"n_train":1916,"n_val":412,"n_test":403,"per_class":[[0.5609756097560976,0.6808510638297872,0.44680851063829785,1.0,0.2926829268292683,0.34210526315789475,0.7959183673469388,0.3829787234042553,0.6666666666666666],[0.6341463414634146,0.5957446808510638,0.425531914893617,1.0,0.1951219512195122,0.5,0.7959183673469388,0.3829787234042553,0.37777777777777777],[0.4878048780487805,0.5319148936170213,0.5957446808510638,0.9791666666666666,0.17073170731707318,0.23684210526315788,0.8163265306122449,0.5957446808510638,0.4444444444444444]],"per_class_n":[41,47,47,48,41,38,49,47,45],"confusion":[[69,20,23,0,11,0,0,0,0],[12,85,23,0,14,0,7,0,0],[38,15,69,1,15,0,0,0,3],[0,0,1,143,0,0,0,0,0],[27,19,44,3,27,0,1,1,1],[0,5,0,0,0,41,5,42,21],[0,4,4,0,0,5,118,8,8],[0,1,5,0,0,30,9,64,32],[0,3,0,3,0,38,2,22,67]]},"5|joint_pos":{"acc":[0.5930521091811415,0.6426799007444168,0.6054590570719603],"n_train":1916,"n_val":412,"n_test":403,"per_class":[[0.6585365853658537,0.7446808510638298,0.5106382978723404,1.0,0.17073170731707318,0.47368421052631576,0.8775510204081632,0.19148936170212766,0.6222222222222222],[0.6097560975609756,0.7021276595744681,0.7021276595744681,1.0,0.1951219512195122,0.5,0.9183673469387755,0.40425531914893614,0.6444444444444445],[0.9024390243902439,0.7021276595744681,0.5531914893617021,1.0,0.04878048780487805,0.631578947368421,0.7755102040816326,0.3829787234042553,0.4]],"per_class_n":[41,47,47,48,41,38,49,47,45],"confusion":[[89,8,9,0,17,0,0,0,0],[16,101,16,0,7,0,0,1,0],[32,11,83,2,10,0,0,0,3],[0,0,0,144,0,0,0,0,0],[62,12,32,0,17,0,0,0,0],[0,3,0,0,0,61,2,20,28],[0,2,0,0,0,7,126,12,0],[0,0,3,0,0,61,5,46,26],[0,2,0,3,0,38,0,17,75]]},"5|tactile+joint_pos":{"acc":[0.6153846153846154,0.6153846153846154,0.6401985111662531],"n_train":1916,"n_val":412,"n_test":403,"per_class":[[0.43902439024390244,0.5957446808510638,0.7446808510638298,1.0,0.34146341463414637,0.18421052631578946,0.8571428571428571,0.46808510638297873,0.7555555555555555],[0.5609756097560976,0.5957446808510638,0.7872340425531915,0.9791666666666666,0.1951219512195122,0.2894736842105263,0.9183673469387755,0.48936170212765956,0.5777777777777777],[0.8292682926829268,0.6595744680851063,0.5531914893617021,1.0,0.21951219512195122,0.631578947368421,0.8571428571428571,0.3829787234042553,0.5777777777777777]],"per_class_n":[41,47,47,48,41,38,49,47,45],"confusion":[[75,2,25,0,21,0,0,0,0],[13,87,19,0,20,0,0,0,2],[16,2,98,0,22,0,1,1,1],[0,0,1,143,0,0,0,0,0],[24,18,49,1,31,0,0,0,0],[0,4,1,0,0,42,2,29,36],[0,1,2,0,0,0,129,13,2],[0,0,1,0,0,33,9,63,35],[0,3,0,3,0,25,3,15,86]]},"10|tactile":{"acc":[0.5983606557377049,0.6530054644808743,0.6502732240437158],"n_train":1779,"n_val":393,"n_test":366,"per_class":[[0.6341463414634146,0.6585365853658537,0.3170731707317073,0.9777777777777777,0.3142857142857143,0.3142857142857143,0.9,0.44680851063829785,0.7317073170731707],[0.6585365853658537,0.6829268292682927,0.5853658536585366,0.9777777777777777,0.34285714285714286,0.42857142857142855,0.85,0.5319148936170213,0.7317073170731707],[0.5853658536585366,0.7560975609756098,0.43902439024390244,0.9777777777777777,0.34285714285714286,0.5714285714285714,0.95,0.5106382978723404,0.6585365853658537]],"per_class_n":[41,41,41,45,35,35,40,47,41],"confusion":[[77,10,9,0,27,0,0,0,0],[14,86,15,0,8,0,0,0,0],[22,9,55,0,36,0,0,0,1],[0,0,3,132,0,0,0,0,0],[35,13,22,0,35,0,0,0,0],[0,0,1,0,2,46,0,36,20],[0,1,0,0,0,1,108,6,4],[0,0,1,0,0,42,2,70,26],[0,0,0,3,0,16,2,15,87]]},"10|joint_pos":{"acc":[0.8169398907103825,0.7978142076502732,0.8142076502732241],"n_train":1779,"n_val":393,"n_test":366,"per_class":[[0.926829268292683,0.926829268292683,0.7560975609756098,0.9777777777777777,0.6571428571428571,0.5142857142857142,0.95,0.6808510638297872,0.9024390243902439],[0.8536585365853658,0.975609756097561,0.8536585365853658,0.9777777777777777,0.4857142857142857,0.37142857142857144,0.95,0.8297872340425532,0.7560975609756098],[0.8536585365853658,0.975609756097561,0.7317073170731707,0.9777777777777777,0.6285714285714286,0.5142857142857142,0.95,0.7872340425531915,0.8292682926829268]],"per_class_n":[41,41,41,45,35,35,40,47,41],"confusion":[[108,2,0,0,13,0,0,0,0],[3,118,0,0,2,0,0,0,0],[8,0,96,0,18,1,0,0,0],[0,0,3,132,0,0,0,0,0],[21,7,15,0,62,0,0,0,0],[1,0,0,0,2,49,0,34,19],[0,0,0,0,0,2,114,4,0],[0,0,0,0,0,30,0,108,3],[0,0,0,3,0,16,0,2,102]]},"10|tactile+joint_pos":{"acc":[0.7622950819672131,0.7431693989071039,0.7540983606557377],"n_train":1779,"n_val":393,"n_test":366,"per_class":[[0.6341463414634146,0.8536585365853658,0.8780487804878049,0.9555555555555556,0.7142857142857143,0.6285714285714286,0.95,0.574468085106383,0.6585365853658537],[0.8536585365853658,0.8536585365853658,0.6341463414634146,0.9333333333333333,0.5142857142857142,0.5428571428571428,0.975,0.44680851063829785,0.9024390243902439],[0.7804878048780488,0.9024390243902439,0.7317073170731707,0.9555555555555556,0.4,0.22857142857142856,0.975,0.8085106382978723,0.8536585365853658]],"per_class_n":[41,41,41,45,35,35,40,47,41],"confusion":[[93,0,4,0,26,0,0,0,0],[2,107,5,0,9,0,0,0,0],[7,0,92,0,23,1,0,0,0],[0,0,2,128,1,0,0,0,4],[25,6,17,0,57,0,0,0,0],[0,0,1,0,2,49,0,42,11],[0,0,0,0,0,0,116,4,0],[0,0,0,0,0,45,2,86,8],[0,0,0,1,0,16,0,7,99]]},"20|tactile":{"acc":[0.7151162790697675,0.7645348837209303,0.75],"n_train":1654,"n_val":373,"n_test":344,"per_class":[[0.8,0.8717948717948718,0.5,1.0,0.5428571428571428,0.5294117647058824,1.0,0.37777777777777777,0.8108108108108109],[0.85,0.9487179487179487,0.5,1.0,0.6857142857142857,0.5882352941176471,1.0,0.5111111111111111,0.7837837837837838],[0.5,0.8461538461538461,0.75,1.0,0.8571428571428571,0.47058823529411764,0.9736842105263158,0.5555555555555556,0.8108108108108109]],"per_class_n":[40,39,36,40,35,34,38,45,37],"confusion":[[86,2,7,0,25,0,0,0,0],[8,104,4,0,1,0,0,0,0],[2,5,63,0,37,0,0,1,0],[0,0,0,120,0,0,0,0,0],[16,5,11,0,73,0,0,0,0],[0,0,0,0,3,54,0,30,15],[0,0,0,0,0,0,113,1,0],[0,0,0,0,0,64,1,65,5],[0,0,0,3,0,14,0,5,89]]},"20|joint_pos":{"acc":[0.8575581395348837,0.8924418604651163,0.872093023255814],"n_train":1654,"n_val":373,"n_test":344,"per_class":[[0.975,0.9230769230769231,0.5833333333333334,1.0,0.9142857142857143,0.5588235294117647,0.9736842105263158,0.9333333333333333,0.7837837837837838],[0.975,1.0,0.9444444444444444,1.0,0.8,0.7647058823529411,0.9736842105263158,0.8444444444444444,0.7027027027027027],[0.9,1.0,0.9722222222222222,1.0,0.6285714285714286,0.5882352941176471,0.9736842105263158,0.8,0.9459459459459459]],"per_class_n":[40,39,36,40,35,34,38,45,37],"confusion":[[114,3,1,0,2,0,0,0,0],[1,114,1,0,1,0,0,0,0],[1,0,90,0,17,0,0,0,0],[0,0,0,120,0,0,0,0,0],[2,6,15,0,82,0,0,0,0],[2,0,0,0,1,65,0,25,9],[0,0,0,0,0,0,111,3,0],[0,0,0,0,0,19,0,116,0],[0,0,0,3,0,17,0,1,90]]},"20|tactile+joint_pos":{"acc":[0.9040697674418605,0.8662790697674418,0.8953488372093024],"n_train":1654,"n_val":373,"n_test":344,"per_class":[[0.95,1.0,0.8611111111111112,1.0,0.8857142857142857,0.6470588235294118,1.0,0.8222222222222222,0.9459459459459459],[1.0,0.9743589743589743,0.8333333333333334,1.0,0.8285714285714286,0.47058823529411764,1.0,0.8222222222222222,0.8108108108108109],[1.0,1.0,0.9166666666666666,1.0,0.7428571428571429,0.4117647058823529,1.0,0.9555555555555556,0.9459459459459459]],"per_class_n":[40,39,36,40,35,34,38,45,37],"confusion":[[118,0,0,0,2,0,0,0,0],[1,116,0,0,0,0,0,0,0],[0,0,94,0,14,0,0,0,0],[0,0,0,120,0,0,0,0,0],[9,5,5,0,86,0,0,0,0],[1,0,0,0,2,52,0,36,11],[0,0,0,0,0,0,114,0,0],[0,0,0,0,0,18,0,117,0],[0,0,0,2,0,7,0,2,100]]},"50|tactile":{"acc":[0.8528428093645485,0.8394648829431438,0.8327759197324415],"n_train":1398,"n_val":322,"n_test":299,"per_class":[[0.8055555555555556,0.9722222222222222,0.8076923076923077,1.0,0.8125,0.5,1.0,0.8666666666666667,0.9032258064516129],[0.7222222222222222,0.9722222222222222,0.8461538461538461,1.0,0.71875,0.71875,1.0,0.6888888888888889,0.967741935483871],[0.75,1.0,0.8461538461538461,1.0,0.6875,0.5625,1.0,0.7777777777777778,0.9032258064516129]],"per_class_n":[36,36,26,32,32,32,29,45,31],"confusion":[[82,1,2,0,23,0,0,0,0],[2,106,0,0,0,0,0,0,0],[0,0,65,0,13,0,0,0,0],[0,0,0,96,0,0,0,0,0],[4,1,20,0,71,0,0,0,0],[0,0,3,0,0,57,0,27,9],[0,0,0,0,0,0,87,0,0],[0,0,0,0,0,29,0,105,1],[0,0,0,0,0,2,0,5,86]]},"50|joint_pos":{"acc":[0.8561872909698997,0.9230769230769231,0.9063545150501672],"n_train":1398,"n_val":322,"n_test":299,"per_class":[[0.9722222222222222,0.9722222222222222,1.0,1.0,0.84375,0.5,1.0,0.5555555555555556,1.0],[1.0,0.9722222222222222,0.8461538461538461,1.0,0.96875,0.84375,1.0,0.8444444444444444,0.8387096774193549],[0.9722222222222222,0.9722222222222222,1.0,1.0,0.75,0.75,1.0,0.7777777777777778,1.0]],"per_class_n":[36,36,26,32,32,32,29,45,31],"confusion":[[106,2,0,0,0,0,0,0,0],[0,105,2,0,1,0,0,0,0],[0,0,74,0,4,0,0,0,0],[0,0,0,96,0,0,0,0,0],[0,0,14,0,82,0,0,0,0],[0,0,2,0,1,67,0,8,18],[0,0,0,0,0,0,87,0,0],[0,0,0,0,0,36,0,98,1],[0,0,0,0,0,5,0,0,88]]},"50|tactile+joint_pos":{"acc":[0.959866220735786,0.9665551839464883,0.9163879598662207],"n_train":1398,"n_val":322,"n_test":299,"per_class":[[1.0,1.0,0.9230769230769231,1.0,0.96875,0.84375,1.0,0.9555555555555556,0.9354838709677419],[1.0,1.0,0.9615384615384616,1.0,0.96875,0.84375,1.0,0.9555555555555556,0.967741935483871],[1.0,1.0,0.9230769230769231,1.0,1.0,0.375,1.0,0.9777777777777777,0.9354838709677419]],"per_class_n":[36,36,26,32,32,32,29,45,31],"confusion":[[108,0,0,0,0,0,0,0,0],[0,108,0,0,0,0,0,0,0],[0,0,73,0,5,0,0,0,0],[0,0,0,96,0,0,0,0,0],[2,0,0,0,94,0,0,0,0],[0,0,3,0,0,66,0,27,0],[0,0,0,0,0,0,87,0,0],[0,0,0,0,0,5,0,130,0],[0,0,0,0,0,4,0,1,88]]}},"dataset":{"n":3278,"per_class":[315,428,351,434,337,321,393,324,375],"eligible":{"1":[308,420,348,381,328,290,344,299,330],"2":[307,416,345,370,322,290,342,298,329],"5":[286,332,309,321,288,282,317,292,304],"10":[277,281,290,291,272,270,291,287,279],"20":[273,246,263,257,263,264,267,281,257],"50":[257,200,222,201,230,240,203,253,213]}}};
+const LABELS = DATA.labels, KS = DATA.Ks;
+const SERIES = [["tactile+joint_pos", "촉각 + 관절", "--s1"], ["tactile", "촉각만", "--s2"], ["joint_pos", "관절만", "--s3"]];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+const std = a => { const m = mean(a); return Math.sqrt(mean(a.map(v => (v - m) ** 2))); };
+const run = (k, ch) => DATA.runs[`${k}|${ch}`];
+const accMean = (k, ch) => mean(run(k, ch).acc);
+const P = v => (100 * v).toFixed(1) + "%";
+
+// ---------- header + summary ----------
+(function () {
+  const tiles = [
+    ["K = 5초", P(accMean(5, "tactile+joint_pos")), "촉각 + 관절 테스트 정확도"],
+    ["K = 20초", P(accMean(20, "tactile+joint_pos")), "촉각 + 관절"],
+    ["K = 50초 (완주)", P(accMean(50, "tactile+joint_pos")), "촉각 + 관절"],
+    ["무작위 기준", P(1 / 9), "9개 물체 중 하나를 찍을 때"],
+    ["에피소드", DATA.dataset.n.toLocaleString(), "배치 높이 0~1mm, 결정론적 policy"],
+  ];
+  document.getElementById("stats").innerHTML = tiles.map(([l, v, f]) =>
+    `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div><div class="foot">${f}</div></div>`).join("");
+  const pc5 = LABELS.map((n, i) => [n, mean(run(5, "tactile+joint_pos").per_class.map(r => r[i]))]).sort((a, b) => a[1] - b[1]);
+  const pc50 = LABELS.map((n, i) => [n, mean(run(50, "tactile+joint_pos").per_class.map(r => r[i]))]).sort((a, b) => a[1] - b[1]);
+  const j10 = accMean(10, "joint_pos"), tj10 = accMean(10, "tactile+joint_pos");
+  document.getElementById("summary").innerHTML =
+    `<b>회전을 오래 할수록 정확도가 꾸준히 올라, 완주(50초)하면 촉각 + 관절로 ${P(accMean(50, "tactile+joint_pos"))}까지 맞힙니다.</b>` +
+    `<ul>` +
+    `<li>5초 안에 판단하면 ${P(accMean(5, "tactile+joint_pos"))}입니다. 물체별로는 ${pc5.slice(-2).reverse().map(([n, v]) => `${n} ${P(v)}`).join(", ")}처럼 거의 바로 구분되는 물체가 있는 반면, ` +
+    `${pc5.slice(0, 2).map(([n, v]) => `${n} ${P(v)}`).join(", ")}은 잘 구분되지 않습니다. 5초 판단 후 물체별 policy로 전환한다면 이 물체들에서 잘못 전환될 가능성이 큽니다.</li>` +
+    `<li>촉각만 쓸 때가 모든 K에서 가장 낮습니다. 관절 위치가 형상 정보를 더 많이 담고 있고, K = 1, 10초를 빼면 둘을 합칠 때 가장 좋습니다.</li>` +
+    `<li>K = 10초에서는 관절만(${P(j10)})이 촉각 + 관절(${P(tj10)})보다 높습니다. 분할 하나, 시드 3개의 결과라 우연일 수 있어 확인이 필요합니다.</li>` +
+    `<li>50초에서도 가장 약한 물체는 ${pc50[0][0]}(${P(pc50[0][1])})입니다. 다만 K = 50초 테스트는 물체당 약 ${Math.round(run(50, "tactile").n_test / 9)}개라 물체별 수치의 오차가 큽니다.</li>` +
+    `</ul>`;
+})();
+
+// ---------- accuracy curve ----------
+function renderCurve() {
+  const holder = document.getElementById("curve-holder");
+  holder.querySelectorAll("svg").forEach(s => s.remove());
+  const W = 760, H = 380, M = { t: 16, r: 120, b: 44, l: 52 };
+  const iw = W - M.l - M.r, ih = H - M.t - M.b;
+  const lx = k => M.l + (Math.log(k) - Math.log(1)) / (Math.log(50) - Math.log(1)) * iw;
+  const ly = v => M.t + ih - v * ih;
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, at, parent) => { const e = document.createElementNS(ns, tag); for (const k in at) e.setAttribute(k, at[k]); (parent || svg).appendChild(e); return e; };
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("class", "chart");
+  svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "회전 시간 K에 따른 분류 정확도");
+  const line = css("--line"), ink3 = css("--ink-3"), surf = css("--panel");
+  [0, 0.2, 0.4, 0.6, 0.8, 1].forEach(v => {
+    el("line", { x1: M.l, x2: M.l + iw, y1: ly(v), y2: ly(v), stroke: line, "stroke-width": 1 });
+    const t = el("text", { x: M.l - 8, y: ly(v) + 4, "text-anchor": "end", class: "axis-label" }); t.textContent = (100 * v) + "%";
+  });
+  KS.forEach(k => { const t = el("text", { x: lx(k), y: M.t + ih + 18, "text-anchor": "middle", class: "axis-label" }); t.textContent = k; });
+  const xt = el("text", { x: M.l + iw / 2, y: H - 6, "text-anchor": "middle", class: "axis-title" }); xt.textContent = "회전 시간 K (초, 로그 눈금)";
+  el("line", { x1: M.l, x2: M.l + iw, y1: ly(1 / 9), y2: ly(1 / 9), stroke: ink3, "stroke-width": 1.5, "stroke-dasharray": "4 4" });
+  const ct = el("text", { x: M.l + 6, y: ly(1 / 9) - 6, class: "axis-label" }); ct.textContent = "무작위 11.1%";
+  // bands, then lines, then markers
+  SERIES.forEach(([ch, , tok]) => {
+    const c = css(tok);
+    const top = KS.map(k => [lx(k), ly(Math.max(...run(k, ch).acc))]);
+    const bot = KS.map(k => [lx(k), ly(Math.min(...run(k, ch).acc))]).reverse();
+    el("polygon", { points: top.concat(bot).map(p => p.join(",")).join(" "), fill: c, "fill-opacity": 0.14, stroke: "none" });
+  });
+  const ends = [];
+  SERIES.forEach(([ch, name, tok]) => {
+    const c = css(tok);
+    el("polyline", { points: KS.map(k => `${lx(k)},${ly(accMean(k, ch))}`).join(" "), fill: "none", stroke: c, "stroke-width": 2, "stroke-linejoin": "round" });
+    KS.forEach(k => el("circle", { cx: lx(k), cy: ly(accMean(k, ch)), r: 4.5, fill: c, stroke: surf, "stroke-width": 2 }));
+    ends.push([ly(accMean(50, ch)), name, c]);
+  });
+  // direct end labels, nudged apart
+  ends.sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < ends.length; i++) if (ends[i][0] - ends[i - 1][0] < 15) ends[i][0] = ends[i - 1][0] + 15;
+  ends.forEach(([y, name]) => { const t = el("text", { x: lx(50) + 12, y: y + 4, class: "axis-title" }); t.textContent = name; });
+  // hover columns + crosshair
+  const cross = el("line", { x1: 0, x2: 0, y1: M.t, y2: M.t + ih, stroke: css("--line-strong"), "stroke-width": 1, opacity: 0 });
+  const tip = document.getElementById("curve-tip");
+  KS.forEach((k, i) => {
+    const x0 = i === 0 ? M.l : (lx(KS[i - 1]) + lx(k)) / 2, x1 = i === KS.length - 1 ? M.l + iw : (lx(k) + lx(KS[i + 1])) / 2;
+    const r = el("rect", { x: x0, y: M.t, width: x1 - x0, height: ih, fill: "transparent" });
+    const show = () => {
+      cross.setAttribute("x1", lx(k)); cross.setAttribute("x2", lx(k)); cross.setAttribute("opacity", 1);
+      tip.innerHTML = `K = ${k}초 · 테스트 ${run(k, "tactile").n_test}개<br>` + SERIES.map(([ch, name]) => {
+        const a = run(k, ch).acc; return `${name}: ${P(mean(a))} (${P(Math.min(...a))}–${P(Math.max(...a))})`; }).join("<br>");
+      const box = svg.getBoundingClientRect(), s = box.width / W;
+      tip.style.left = Math.min(Math.max(lx(k) * s, 120), box.width - 120) + "px"; tip.style.top = (ly(accMean(k, "tactile+joint_pos")) * s) + "px";
+      tip.classList.add("show");
+    };
+    r.addEventListener("mouseenter", show); r.addEventListener("mousemove", show);
+    r.addEventListener("mouseleave", () => { tip.classList.remove("show"); cross.setAttribute("opacity", 0); });
+  });
+  holder.appendChild(svg);
+  document.getElementById("curve-legend").innerHTML = SERIES.map(([, name, tok]) =>
+    `<span class="item"><span class="sw-line" style="background:var(${tok})"></span>${name}</span>`).join("");
+}
+
+// ---------- sequential color helpers ----------
+function hexRgb(h) { h = h.replace("#", ""); if (h.length === 3) h = [...h].map(c => c + c).join(""); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function seq(t) {
+  const lo = hexRgb(css("--seq-lo")), hi = hexRgb(css("--seq-hi")); t = Math.max(0, Math.min(1, t));
+  const c = lo.map((v, i) => v + (hi[i] - v) * t);
+  const lum = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+  return { bg: `rgb(${c.map(v => v | 0).join(",")})`, fg: lum > 0.55 ? "#0b0b0b" : "#ffffff" };
+}
+function segControl(id, items, current, onPick) {
+  const h = document.getElementById(id); h.innerHTML = "";
+  items.forEach(([val, label]) => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = label;
+    b.setAttribute("aria-pressed", String(val === current));
+    b.addEventListener("click", () => onPick(val)); h.appendChild(b);
+  });
+}
+
+// ---------- per-object heatmap ----------
+let heatCh = "tactile+joint_pos";
+function renderHeat() {
+  segControl("ch-seg", SERIES.map(([c, n]) => [c, n]), heatCh, v => { heatCh = v; renderHeat(); });
+  const t = document.getElementById("heat");
+  let html = `<tr><th></th>${KS.map(k => `<th>K ${k}초</th>`).join("")}</tr>`;
+  LABELS.forEach((n, i) => {
+    html += `<tr><th class="row">${n}</th>` + KS.map(k => {
+      const r = run(k, heatCh), v = mean(r.per_class.map(p => p[i])), c = seq(v);
+      return `<td style="background:${c.bg};color:${c.fg}" title="${n} · K ${k}초 · ${P(v)} (테스트 ${r.per_class_n[i]}개)">${(100 * v).toFixed(0)}</td>`;
+    }).join("") + `</tr>`;
+  });
+  html += `<tr><th class="row"><b>전체</b></th>` + KS.map(k => { const v = accMean(k, heatCh), c = seq(v);
+    return `<td style="background:${c.bg};color:${c.fg};font-weight:600" title="전체 · K ${k}초 · ${P(v)}">${(100 * v).toFixed(0)}</td>`; }).join("") + `</tr>`;
+  t.innerHTML = html;
+}
+
+// ---------- confusion matrix ----------
+let cmK = 5, cmCh = "tactile+joint_pos";
+function renderCM() {
+  segControl("cm-ch-seg", SERIES.map(([c, n]) => [c, n]), cmCh, v => { cmCh = v; renderCM(); });
+  segControl("k-seg", KS.map(k => [k, k + "초"]), cmK, v => { cmK = v; renderCM(); });
+  const m = run(cmK, cmCh).confusion;
+  const name = SERIES.find(s => s[0] === cmCh)[1];
+  document.getElementById("cm-desc").innerHTML =
+    `행 = 실제 물체, 열 = 예측. 각 칸은 그 행의 실제 물체가 해당 열로 예측된 비율(%)이고, 시드 3개의 예측을 합쳤습니다. 대각선(테두리)이 정답입니다. 지금 보는 것: <b>${name}, K = ${cmK}초</b>.`;
+  let html = `<tr><th></th>${LABELS.map(n => `<th title="${n}">${n.replace("cylinder_", "cyl ").replace("block_", "blk ")}</th>`).join("")}</tr>`;
+  m.forEach((row, i) => {
+    const tot = row.reduce((s, v) => s + v, 0) || 1;
+    html += `<tr><th class="row">${LABELS[i]}</th>` + row.map((v, j) => {
+      const p = v / tot, c = seq(p);
+      return `<td class="${i === j ? "diag" : ""}" style="background:${c.bg};color:${c.fg}" title="실제 ${LABELS[i]} → 예측 ${LABELS[j]}: ${(100 * p).toFixed(1)}% (${v}/${tot})">${p >= 0.005 ? (100 * p).toFixed(0) : ""}</td>`;
+    }).join("") + `</tr>`;
+  });
+  document.getElementById("cm").innerHTML = html;
+}
+
+// ---------- table ----------
+(function () {
+  let html = `<tr><th>K (초)</th><th>사용 에피소드</th><th>train / val / test</th>${SERIES.map(([, n]) => `<th>${n}</th>`).join("")}</tr>`;
+  KS.forEach(k => {
+    const r = run(k, "tactile"), used = r.n_train + r.n_val + r.n_test;
+    html += `<tr><td>${k}${k === 50 ? " (완주)" : ""}</td><td>${used.toLocaleString()}</td><td>${r.n_train} / ${r.n_val} / ${r.n_test}</td>` +
+      SERIES.map(([ch]) => { const a = run(k, ch).acc; return `<td>${P(mean(a))} ± ${(100 * std(a)).toFixed(1)}</td>`; }).join("") + `</tr>`;
+  });
+  document.getElementById("table").innerHTML = html;
+})();
+
+function renderAll() { renderCurve(); renderHeat(); renderCM(); }
+renderAll();
+new MutationObserver(renderAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll); } catch (e) {}
+window.addEventListener("resize", () => document.getElementById("curve-tip").classList.remove("show"));
+</script>
