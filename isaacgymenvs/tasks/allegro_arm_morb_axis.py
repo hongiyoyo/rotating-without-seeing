@@ -223,6 +223,9 @@ class AllegroArmMOAR(VecTask):
         self.used_training_objects = self.object_sets[str(self.object_set_id)]
         self.num_training_objects = len(self.used_training_objects)
         self.deterministic_object_assign = self.cfg["env"].get("deterministicObjectAssign", False)
+        self.force_object = self.cfg["env"].get("forceObject", None)
+        if self.force_object is not None and self.force_object not in self.used_training_objects:
+            raise ValueError(f"forceObject={self.force_object} is not in objSet {self.object_set_id}: {self.used_training_objects}")
 
         if self.object_set_id == "cross":
             self.obj_init_pos_shift = {
@@ -760,7 +763,10 @@ class AllegroArmMOAR(VecTask):
             self.hand_indices.append(hand_idx)
 
             # add object
-            if self.deterministic_object_assign:
+            if self.force_object is not None:
+                # object-specialized training/evaluation: same object in every env
+                obj_class_indice = self.used_training_objects.index(self.force_object)
+            elif self.deterministic_object_assign:
                 # round-robin over training objects (used for visualization / balanced data collection)
                 obj_class_indice = i % len(self.used_training_objects)
             else:

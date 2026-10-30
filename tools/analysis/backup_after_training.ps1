@@ -7,6 +7,7 @@ param(
     [string]$RunDir = "C:\YangJaehong\rotating-without-seeing\runs\z-axis-touch-only\z-axis-touch-onlyS1.0_C0.0_M0.02026-10-28_15-22-53-83810",
     [string]$TrainLog = "C:\YangJaehong\train_logs\train_20261028_152248.log",
     [string]$Tag = "ckpt-rws2-retrain-20261028",
+    [string]$Name = "rws2-retrain",
     [string]$WandbUrl = "https://wandb.ai/jhyang321-seoul-national-university/isaacgymenvs/runs/lxgr93nn",
     [switch]$NoWait,  # testing: skip waiting for the training process
     [switch]$Draft    # testing: create a draft (non-public) release
@@ -39,10 +40,10 @@ try {
     $stage = "C:\YangJaehong\train_logs\backup_$Tag"
     New-Item -ItemType Directory -Force $stage | Out-Null
     $files = @()
-    Copy-Item -LiteralPath $best.FullName "$stage\rws2-retrain_best.pth"; $files += "$stage\rws2-retrain_best.pth"
+    Copy-Item -LiteralPath $best.FullName "$stage\$($Name)_best.pth"; $files += "$stage\$($Name)_best.pth"
     if ($final) {
         $ep = if ($final.Name -match "ep_?(\d+)") { $Matches[1] } else { "x" }
-        Copy-Item -LiteralPath $final.FullName "$stage\rws2-retrain_last_ep$ep.pth"; $files += "$stage\rws2-retrain_last_ep$ep.pth"
+        Copy-Item -LiteralPath $final.FullName "$stage\$($Name)_last_ep$ep.pth"; $files += "$stage\$($Name)_last_ep$ep.pth"
     }
     Copy-Item -LiteralPath (Join-Path $RunDir "config.yaml") "$stage\config.yaml"; $files += "$stage\config.yaml"
     Compress-Archive -LiteralPath (Join-Path $RunDir "summaries") -DestinationPath "$stage\tensorboard_summaries.zip" -Force
@@ -61,14 +62,14 @@ Automatic backup after training ($status).
 - $exitLine
 - repo HEAD at upload: $commit
 
-Files: rws2-retrain_best.pth = best checkpoint (rl_games nn/<name>.pth); last_ep*.pth = final checkpoint; config.yaml; tensorboard summaries; console log.
+Files: $($Name)_best.pth = best checkpoint (rl_games nn/<name>.pth); last_ep*.pth = final checkpoint; config.yaml; tensorboard summaries; console log.
 "@
     $notesFile = "$stage\release_notes.md"
     $notes | Out-File $notesFile -Encoding utf8
 
     $draftArg = @(); if ($Draft) { $draftArg = @("--draft") }
     $ErrorActionPreference = "Continue"  # gh writes progress to stderr; judge by exit code instead
-    & $Gh release create $Tag @files @draftArg --repo $Repo --target main --title "Checkpoint: rws2-retrain (2026-10-28, $status)" --notes-file $notesFile 2>&1 | ForEach-Object { Log "gh: $_" }
+    & $Gh release create $Tag @files @draftArg --repo $Repo --target main --title "Checkpoint: $Name ($status)" --notes-file $notesFile 2>&1 | ForEach-Object { Log "gh: $_" }
     if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit $LASTEXITCODE). Is gh still logged in?" }
     Log "UPLOAD DONE: https://github.com/$Repo/releases/tag/$Tag"
 } catch {
