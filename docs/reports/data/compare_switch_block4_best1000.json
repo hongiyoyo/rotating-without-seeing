@@ -1,0 +1,39 @@
+{
+ "per_group": 1000,
+ "switch_sec": 5.0,
+ "results": [
+  {
+   "config": "generalist only",
+   "n": 1000,
+   "completion": 0.55,
+   "early_1s": 0.134,
+   "reached_switch": 771,
+   "fail_after_switch": 0.28664072632944226,
+   "fail_within_1s_after": 0.009079118028534372,
+   "tilt_share": 0.9555555555555556,
+   "mean_len_s": 32.492700000000006
+  },
+  {
+   "config": "G -> spec_ep3311_best",
+   "n": 1000,
+   "completion": 0.64,
+   "early_1s": 0.131,
+   "reached_switch": 773,
+   "fail_after_switch": 0.17205692108667528,
+   "fail_within_1s_after": 0.02199223803363519,
+   "tilt_share": 0.9527777777777777,
+   "mean_len_s": 34.7716
+  },
+  {
+   "config": "spec_ep3311_best only",
+   "n": 1000,
+   "completion": 0.787,
+   "early_1s": 0.1,
+   "reached_switch": 858,
+   "fail_after_switch": 0.08275058275058275,
+   "fail_within_1s_after": 0.006993006993006993,
+   "tilt_share": 0.9154929577464789,
+   "mean_len_s": 41.075900000000004
+  }
+ ]
+}

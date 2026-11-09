@@ -1,0 +1,214 @@
+<title>block_4 폐루프 전환</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (lab report), exhibits break slightly wider; numbers in mono */
+:root {
+  --bg: #f7f8f9; --surface: #ffffff; --fg: #15191d; --fg2: #4b535b; --muted: #7a838c;
+  --line: #dde2e6; --accent: #2a6fb8; --soft: #eaf1f8;
+  --s-gen: #8a939b; --s-ora: #2a78d6; --s-cls: #eb6834;
+  --good: #1f7a4d;
+  --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121519; --surface: #1a1e23; --fg: #eceff2; --fg2: #b4bcc4; --muted: #87909a;
+  --line: #2e343b; --accent: #6fa8e8; --soft: #1d2a38;
+  --s-gen: #8f98a1; --s-ora: #3987e5; --s-cls: #d95926; --good: #4fbf86; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121519; --surface: #1a1e23; --fg: #eceff2; --fg2: #b4bcc4; --muted: #87909a;
+  --line: #2e343b; --accent: #6fa8e8; --soft: #1d2a38;
+  --s-gen: #8f98a1; --s-ora: #3987e5; --s-cls: #d95926; --good: #4fbf86; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.65;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 760px; margin: 0 auto; padding-block: 40px 64px; display: flex; flex-direction: column; gap: 40px; }
+h1 { font-size: 28px; line-height: 1.25; margin: 0; text-wrap: balance; font-weight: 700; }
+h2 { font-size: 19px; margin: 0 0 10px; text-wrap: balance; }
+p { margin: 0 0 10px; max-width: 68ch; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; font-family: var(--mono); }
+.lead { font-size: 17px; color: var(--fg); }
+.meta { color: var(--muted); font-size: 13px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.answer { background: var(--soft); border-radius: 10px; padding: 18px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
+.answer div { min-width: 0; }
+.answer .k { font-size: 12px; color: var(--fg2); }
+.answer .v { font-family: var(--mono); font-size: 24px; font-weight: 500; }
+.answer .s { font-size: 12px; color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 500; color: var(--fg2); font-size: 12.5px; }
+td.num { font-family: var(--mono); }
+tr.hl td { background: var(--soft); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 12px 8px; position: relative; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--fg2); padding: 0 6px 6px; }
+svg text { font-family: var(--sans); }
+.tip { position: absolute; pointer-events: none; background: var(--fg); color: var(--bg); font-size: 12.5px; padding: 6px 9px; border-radius: 6px; line-height: 1.45; white-space: nowrap; }
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; }
+.box { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 12px; }
+.box b { font-weight: 500; }
+.arrow { color: var(--muted); }
+.branch { display: flex; flex-direction: column; gap: 6px; }
+.box.spec { border-color: var(--s-cls); }
+ul { margin: 0; padding-left: 20px; } li { margin-bottom: 6px; max-width: 68ch; }
+code { font-family: var(--mono); font-size: 13px; background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+.foot { font-size: 13px; color: var(--muted); }
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">rotating-without-seeing · 2026-11-10</div>
+  <h1>block_4 폐루프 전환: 분류기가 K초 안에 알아보고 전용 정책으로 바꿀 수 있는가</h1>
+  <p class="lead" style="margin-top:14px">가능합니다. 5초 분류기를 실제 루프에 넣으면 5초 이후 실패율이 <span class="num">26.7%</span>에서 <span class="num">14.3%</span>로 줄어, 정답을 아는 오라클 전환(<span class="num">14.0%</span>)과 차이가 없습니다. 2초 분류기는 오라클 이득의 <span class="num">81%</span>를 지킵니다.</p>
+  <p class="meta">block_4만 놓고 실험 · 배치 높이 0~1mm · 구성당 env 1,000개 · env마다 첫 에피소드 · 결정론적 행동 · 시뮬레이션 시드 42</p>
+</header>
+
+<section class="answer" aria-label="핵심 수치">
+  <div><div class="k">5초 이후 실패율 (범용만)</div><div class="v">26.7%</div><div class="s">n = 816</div></div>
+  <div><div class="k">5초 분류기 전환</div><div class="v" style="color:var(--s-cls)">14.3%</div><div class="s">p = 5×10⁻¹⁰ (범용 대비)</div></div>
+  <div><div class="k">오라클 이득 보존율</div><div class="v">97% / 81%</div><div class="s">K = 5초 / 2초</div></div>
+  <div><div class="k">실시간 block_4 인지율</div><div class="v">98.2% / 92.8%</div><div class="s">K = 5초 / 2초</div></div>
+</section>
+
+<section>
+  <h2>실험 구성</h2>
+  <p>모든 에피소드를 범용 정책으로 시작합니다. K초가 되면 그때까지의 촉각 16채널과 관절위치 16채널 기록을 K초 분류기에 넣고, block_4라고 하면 전용 정책으로 바꿉니다. 아니면 끝까지 범용 정책을 씁니다.</p>
+  <div class="flow" style="margin:14px 0 16px">
+    <div class="box"><b>범용 정책</b>으로 시작</div><span class="arrow">→</span>
+    <div class="box">K초 동안 센서 기록<br><span class="meta">(K×10 step, 32채널)</span></div><span class="arrow">→</span>
+    <div class="box">K초 분류기<br><span class="meta">9개 물체 중 argmax</span></div><span class="arrow">→</span>
+    <div class="branch">
+      <div class="box spec">block_4 → <b>전용 정책</b>(ep3311)</div>
+      <div class="box">그 외 → 범용 정책 유지</div>
+    </div>
+  </div>
+  <div class="scroll"><table>
+    <thead><tr><th>그룹</th><th>K초 이후 행동</th><th>env</th></tr></thead>
+    <tbody>
+      <tr><td><span class="sw" style="background:var(--s-gen)"></span>범용만</td><td style="text-align:left">범용</td><td class="num">1,000</td></tr>
+      <tr><td><span class="sw" style="background:var(--s-ora)"></span>오라클 (2초, 5초)</td><td style="text-align:left">무조건 전용 (물체를 안다고 가정한 상한)</td><td class="num">1,000 × 2</td></tr>
+      <tr><td><span class="sw" style="background:var(--s-cls)"></span>분류기 (2초, 5초)</td><td style="text-align:left">분류기가 block_4라고 할 때만 전용</td><td class="num">1,000 × 2</td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta" style="margin-top:10px">block_4만 놓았기 때문에 분류기는 block_4를 놓칠 수만 있고, 다른 물체를 block_4로 잘못 보는 경우는 실험에 나오지 않습니다.</p>
+</section>
+
+<section>
+  <h2>K초 이후 실패율</h2>
+  <p>K초까지 버틴 에피소드 중 끝까지 못 간 비율입니다. 점은 실패율, 막대는 95% 신뢰구간(Wilson)입니다. 두 K 모두 분류기 전환이 범용보다 확실히 낮습니다. 5초에서는 오라클과 겹칩니다.</p>
+  <div class="chart" id="chart1">
+    <div class="legend">
+      <span><span class="sw" style="background:var(--s-gen)"></span>범용만</span>
+      <span><span class="sw" style="background:var(--s-ora)"></span>오라클 전환</span>
+      <span><span class="sw" style="background:var(--s-cls)"></span>분류기 전환</span>
+    </div>
+    <svg id="svg1" viewBox="0 0 700 300" width="100%" role="img" aria-label="K초 이후 실패율: K=2초 범용 32.4%, 오라클 16.8%, 분류기 19.7%; K=5초 범용 26.7%, 오라클 14.0%, 분류기 14.3%"></svg>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+  <div class="scroll" style="margin-top:16px"><table>
+    <thead><tr><th>K</th><th>그룹</th><th>K초 도달</th><th>K초 이후 실패</th><th>전환 비율</th><th>전환 후 1초 안 실패</th><th>완주율</th></tr></thead>
+    <tbody>
+      <tr><td>—</td><td>범용만</td><td class="num">884 / 816</td><td class="num">32.4% / 26.7%</td><td class="num">0%</td><td class="num">1.7% / 1.2%</td><td class="num">59.8%</td></tr>
+      <tr><td>2초</td><td>오라클</td><td class="num">855</td><td class="num">16.8%</td><td class="num">100%</td><td class="num">2.6%</td><td class="num">71.1%</td></tr>
+      <tr class="hl"><td>2초</td><td>분류기</td><td class="num">871</td><td class="num">19.7%</td><td class="num">94.5%</td><td class="num">2.9%</td><td class="num">69.9%</td></tr>
+      <tr><td>5초</td><td>오라클</td><td class="num">801</td><td class="num">14.0%</td><td class="num">100%</td><td class="num">1.9%</td><td class="num">68.9%</td></tr>
+      <tr class="hl"><td>5초</td><td>분류기</td><td class="num">818</td><td class="num">14.3%</td><td class="num">96.9%</td><td class="num">1.5%</td><td class="num">70.1%</td></tr>
+    </tbody>
+  </table></div>
+  <ul style="margin-top:12px">
+    <li>범용 대비 분류기: 2초 p = 2×10⁻⁹, 5초 p = 5×10⁻¹⁰ (Fisher). 오라클 대비 분류기: 2초 p = 0.12, 5초 p = 0.89.</li>
+    <li>범용만의 "K초 도달 / 실패" 칸은 2초 기준 / 5초 기준입니다. 완주율은 시작한 에피소드 전체 기준이라 K끼리 비교할 수 있습니다. 2초와 5초 전환의 완주율 차이(오라클 71.1% 대 68.9%)는 오차(약 ±2.9%p) 안입니다.</li>
+    <li>11/3 오라클 5초 실험(범용 28.7% → 17.2%)과 같은 방향이고, 수치 차이는 신뢰구간 안입니다.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>실시간 인지율</h2>
+  <p>K초까지 버틴 block_4 에피소드 중 분류기가 block_4라고 답한 비율입니다. K초까지는 다섯 그룹 모두 같은 범용 정책이 돌기 때문에 전체 env를 합쳐 셌습니다. 오프라인 테스트 결과와 거의 같아서, 실시간 입력이 학습 데이터와 같은 분포로 들어가고 있습니다.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>K</th><th>실시간 인지율</th><th>오프라인 재현율 (같은 분류기)</th><th>놓쳤을 때 고른 물체</th></tr></thead>
+    <tbody>
+      <tr><td>2초</td><td class="num">92.8% (4,043 / 4,355)</td><td class="num">96%</td><td style="text-align:left">cylinder_4 183, block_3 62, block_2 47, 기타 20</td></tr>
+      <tr><td>5초</td><td class="num">98.2% (3,957 / 4,029)</td><td class="num">100%</td><td style="text-align:left">block_3 47, cylinder_4 23, 기타 2</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>놓친 에피소드는 원래 실패할 에피소드였다</h2>
+  <p>5초 분류기가 놓친 에피소드는 범용 정책으로 둬도 94%, 오라클처럼 억지로 바꿔도 75%가 실패합니다. 이미 자세가 무너진 궤적이라 분류기가 block_4로 못 알아본 것으로 보이고, 그래서 놓쳐도 손해가 거의 없습니다. 2초에서는 놓친 에피소드 중 바꿨으면 살았을 것이 꽤 있어서(실패 25% 대 54~67%) 이득의 19%를 잃습니다.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>K</th><th>분류기 판정</th><th>범용만 그룹</th><th>오라클 그룹 (전환함)</th><th>분류기 그룹</th></tr></thead>
+    <tbody>
+      <tr><td>2초</td><td>block_4로 인지</td><td class="num">30.7% (n 821)</td><td class="num">16.3% (n 799)</td><td class="num">17.0% (n 823, 전환)</td></tr>
+      <tr><td>2초</td><td>놓침</td><td class="num">54.0% (n 63)</td><td class="num">25.0% (n 56)</td><td class="num">66.7% (n 48, 유지)</td></tr>
+      <tr><td>5초</td><td>block_4로 인지</td><td class="num">25.2% (n 798)</td><td class="num">13.1% (n 789)</td><td class="num">11.6% (n 793, 전환)</td></tr>
+      <tr><td>5초</td><td>놓침</td><td class="num">94.4% (n 18)</td><td class="num">75.0% (n 12)</td><td class="num">100% (n 25, 유지)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta" style="margin-top:10px">값은 K초 이후 실패율입니다. 분류기는 다섯 그룹 모두에서 K초에 돌려 판정을 기록했고, 전환에 쓴 건 분류기 그룹뿐입니다. 그룹끼리는 서로 다른 env라 짝지은 비교는 아니고, "놓침" 칸은 표본이 작습니다.</p>
+</section>
+
+<section>
+  <h2>한계</h2>
+  <ul>
+    <li>다른 물체를 block_4로 잘못 보고 전환하는 경우는 실험 범위 밖입니다. 오프라인 기준으로 5초 분류기의 block_4 정밀도는 96~98%이고, 잘못 보는 대상은 대부분 cylinder_4입니다.</li>
+    <li>분류기는 시드 0 하나, 시뮬레이션 시드도 하나입니다. 2초 분류기는 시드마다 block_4 재현율이 86~100%로 흔들려서, 2초 결과는 시드를 바꾸면 달라질 수 있습니다.</li>
+    <li>판정 기준은 argmax 하나만 썼습니다. 확신도가 낮을 때 범용을 유지하는 기준값은 이 실험에서 정하지 않았습니다.</li>
+    <li>전환 후 1초 안 실패는 범용보다 조금 높지만(5초: 1.5% 대 1.2%, 2초: 2.9% 대 1.7%), 전체 이득에 비하면 작습니다. 전환 순간 행동 변화량의 중앙값은 2.57입니다.</li>
+  </ul>
+</section>
+
+<footer class="foot">
+  <p>스크립트: <code>tools/analysis/closed_loop_switch.py</code>, <code>run_closed_loop.sh</code> · 범용 = <code>rws2-retrain</code> best, 전용 = <code>block4-ft</code> ep3311, 분류기 = <code>k{2,5}_tactile+joint_pos_s0.pt</code> · 결과: <code>train_logs/closed_loop_switch_1000.{json,npz}</code></p>
+</footer>
+</main>
+
+<script>
+(function () {
+  const groups = [
+    { k: "K = 2초", rows: [
+      { name: "범용만", c: "--s-gen", p: 32.35, lo: 29.35, hi: 35.51, n: 884, f: 286 },
+      { name: "오라클 전환", c: "--s-ora", p: 16.84, lo: 14.48, hi: 19.50, n: 855, f: 144 },
+      { name: "분류기 전환", c: "--s-cls", p: 19.75, lo: 17.24, hi: 22.52, n: 871, f: 172 } ] },
+    { k: "K = 5초", rows: [
+      { name: "범용만", c: "--s-gen", p: 26.72, lo: 23.79, hi: 29.86, n: 816, f: 218 },
+      { name: "오라클 전환", c: "--s-ora", p: 13.98, lo: 11.75, hi: 16.56, n: 801, f: 112 },
+      { name: "분류기 전환", c: "--s-cls", p: 14.30, lo: 12.07, hi: 16.87, n: 818, f: 117 } ] } ];
+  const svg = document.getElementById("svg1"), tip = document.getElementById("tip"), wrap = document.getElementById("chart1");
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 700, H = 300, L = 48, R = 16, T = 12, B = 40, ymax = 40;
+  const y = v => T + (H - T - B) * (1 - v / ymax);
+  const el = (tag, a, txt) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; svg.appendChild(e); return e; };
+  for (let v = 0; v <= ymax; v += 10) {
+    el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--line)", "stroke-width": 1 });
+    el("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end", "font-size": 12, fill: "var(--muted)" }, v + "%");
+  }
+  const gw = (W - L - R) / groups.length;
+  groups.forEach((g, gi) => {
+    const x0 = L + gw * gi;
+    el("text", { x: x0 + gw / 2, y: H - 12, "text-anchor": "middle", "font-size": 13, fill: "var(--fg2)" }, g.k);
+    g.rows.forEach((r, ri) => {
+      const x = x0 + gw * (0.28 + ri * 0.22);
+      const col = `var(${r.c})`;
+      el("line", { x1: x, x2: x, y1: y(r.lo), y2: y(r.hi), stroke: col, "stroke-width": 2, "stroke-linecap": "round" });
+      [r.lo, r.hi].forEach(v => el("line", { x1: x - 6, x2: x + 6, y1: y(v), y2: y(v), stroke: col, "stroke-width": 2, "stroke-linecap": "round" }));
+      el("circle", { cx: x, cy: y(r.p), r: 6, fill: col, stroke: "var(--surface)", "stroke-width": 2 });
+      el("text", { x: x + 11, y: y(r.p) + 4, "font-size": 12, fill: "var(--fg)", "font-family": "IBM Plex Mono, monospace" }, r.p.toFixed(1) + "%");
+      const hit = el("rect", { x: x - 24, y: y(r.hi) - 10, width: 48, height: y(r.lo) - y(r.hi) + 20, fill: "transparent", tabindex: 0 });
+      const show = () => {
+        tip.innerHTML = `<b>${g.k} · ${r.name}</b><br>실패 ${r.f} / ${r.n} = ${r.p.toFixed(1)}%<br>95% CI ${r.lo.toFixed(1)}–${r.hi.toFixed(1)}%`;
+        tip.hidden = false;
+        const sb = svg.getBoundingClientRect(), wb = wrap.getBoundingClientRect(), s = sb.width / W;
+        let left = sb.left - wb.left + x * s + 14; const top = sb.top - wb.top + y(r.p) * s - 20;
+        if (left + 190 > wb.width) left = sb.left - wb.left + x * s - 200;
+        tip.style.left = left + "px"; tip.style.top = top + "px";
+      };
+      hit.addEventListener("mouseenter", show); hit.addEventListener("focus", show);
+      hit.addEventListener("mouseleave", () => tip.hidden = true); hit.addEventListener("blur", () => tip.hidden = true);
+    });
+  });
+})();
+</script>

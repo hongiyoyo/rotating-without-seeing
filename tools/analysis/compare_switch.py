@@ -3,7 +3,7 @@
 # episode of every env is counted, so completion is not biased toward short episodes.
 #
 # Run in WSL (robosyn env):  python compare_switch.py
-#   env: PER_GROUP (default 200), SWITCH_SEC (default 5), OUT (json)
+#   env: SPEC_DIR (specialist checkpoints), PER_GROUP (default 200), SWITCH_SEC (default 5), OUT (json)
 import isaacgym  # noqa: F401
 import os, sys, copy, json, glob, re
 REPO = "/mnt/c/YangJaehong/rotating-without-seeing"
@@ -17,7 +17,7 @@ import isaacgymenvs
 from isaacgym.torch_utils import quat_rotate, quat_rotate_inverse
 
 GEN = REPO + "/runs/z-axis-touch-only/z-axis-touch-onlyS1.0_C0.0_M0.02026-10-28_15-22-53-83810/nn/z-axis-touch-only.pth"
-SPEC_DIR = REPO + "/runs/finetune_init/compare"  # copies of the specialist checkpoints (training keeps writing the originals)
+SPEC_DIR = os.environ.get("SPEC_DIR", REPO + "/runs/finetune_init/compare")  # copies of the specialist checkpoints (training keeps writing the originals)
 PER_GROUP = int(os.environ.get("PER_GROUP", "200"))
 SWITCH_SEC = float(os.environ.get("SWITCH_SEC", "5"))
 OUT = os.environ.get("OUT", "/mnt/c/YangJaehong/train_logs/compare_switch.json")
