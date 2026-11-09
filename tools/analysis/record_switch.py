@@ -4,7 +4,7 @@
 # replay_viewer.py, and prints simple switch diagnostics.
 #
 # Run in WSL (robosyn env):  python record_switch.py
-#   env: OUT, PICK (episodes to keep, default 10), SWITCH_SEC (default 5), STEPS (control steps, default 1000)
+#   env: OUT, SPEC (specialist ckpt), PICK (episodes to keep, default 10), SWITCH_SEC (default 5), STEPS (control steps, default 1000)
 import isaacgym  # noqa: F401  (must precede torch)
 import os, sys, copy, pickle
 REPO = "/mnt/c/YangJaehong/rotating-without-seeing"
@@ -18,7 +18,7 @@ import isaacgymenvs
 from isaacgym.torch_utils import quat_rotate, quat_rotate_inverse, quat_mul, quat_conjugate
 
 GEN = REPO + "/runs/z-axis-touch-only/z-axis-touch-onlyS1.0_C0.0_M0.02026-10-28_15-22-53-83810/nn/z-axis-touch-only.pth"
-SPEC = REPO + "/runs/finetune_init/block4_ft_best_snapshot.pth"
+SPEC = os.environ.get("SPEC", REPO + "/runs/finetune_init/compare_best/spec_ep3311_best.pth")
 OUT = os.environ.get("OUT", "/mnt/c/YangJaehong/train_logs/viewer/block4_switch_episodes.pkl")
 PICK = int(os.environ.get("PICK", "10"))
 SWITCH_SEC = float(os.environ.get("SWITCH_SEC", "5"))

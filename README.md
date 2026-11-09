@@ -478,10 +478,10 @@ rl_games 체크포인트 이름에는 `last_xxxep110rew[7.25].pth`처럼 대괄�
 | `env_check.py` | 학습 없이 환경만 검증: 설정값, 관측 340차원, 질량, reset 때 써 넣은 초기 위치/yaw가 시뮬레이터에 반영되는지(함정 #7) |
 | `early_term.py`, `early_term_policy.py` | 시작 직후 종료되는 에피소드가 어떤 종료 조건에 걸리는지(행동 0 / 실제 정책) |
 | `record_failed_episodes.py` | 평가 조건으로 정책을 돌리며 한 물체의 실패 에피소드를 물리 스텝(1/60초)마다 녹화. `TARGET=cylinder_2 PICK=5`처럼 물체와 개수(길이 분포에서 고르게) 지정 |
-| `replay_viewer.py` | 녹화본을 Isaac Gym 뷰어에서 실제 속도로 재생. 끝나면 멈추고 종료 원인을 화면에 표시. SPACE 다음, R 다시, B 이전, ESC 종료. `--sort len`, `--start N` |
+| `replay_viewer.py` | 녹화본을 Isaac Gym 뷰어에서 실제 속도로 재생. 끝나면 멈추고 종료 원인을 화면에 표시. SPACE 다음, R 다시, B 이전, ESC 종료. `--sort len`, `--start N`. `--snap 3,15 --start 0`: 첫 완주 에피소드의 3초·15초 화면을 정책 이름·경과 시간과 함께 PNG로 저장(`--snap-dir`) |
 | `record_reset_reasons.py` | 평가를 같은 설정·시드로 돌리며 모든 에피소드의 종료 원인 기록(`OUT=...`, 뒤에 hydra override) |
 | `run_collect_z1mm.sh`, `run_classifiers.sh`, `agg_classifiers.py` | 0~1mm 촉각 데이터 수집 → K별 분류기 54개 학습 → 집계 |
-| `record_switch.py` + `run_switch.sh` | 범용 → 전용 정책 전환(기본 5초) 에피소드를 녹화. 프레임마다 어느 정책이 행동했는지 저장하고, 전환 순간 행동 변화량을 출력 |
+| `record_switch.py` + `run_switch.sh` | 범용 → 전용 정책 전환(기본 5초) 에피소드를 녹화. 프레임마다 어느 정책이 행동했는지 저장하고, 전환 순간 행동 변화량을 출력. 전용 정책은 `SPEC`(기본 ep3311) |
 | `run_switch_viewer.sh` | 전환 녹화본 재생. 뷰어에 `POLICY: GENERALIST`(하늘색) / `POLICY: SPECIALIZED (BLOCK_4)`(주황)와 완주·실패를 표시 |
 | `compare_switch.py` + `run_compare.sh` | 전환 구성 여러 개를 한 시뮬레이션에서 env 그룹으로 나눠 비교(각 env의 첫 에피소드만 집계). 비교할 전용 체크포인트는 `runs/finetune_init/compare/`에 복사해 둠 |
 | `smoke_specialist.sh` | 전용 정책 이어 학습 스모크 테스트(64 env, 3 epoch) |

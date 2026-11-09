@@ -22,6 +22,9 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--file", default="/mnt/c/YangJaehong/train_logs/viewer/block4_failed_episodes.pkl")
 ap.add_argument("--sort", choices=["time", "len"], default="time", help="time = order they happened, len = shortest first")
 ap.add_argument("--start", type=int, default=1, help="1-based episode number to start from")
+ap.add_argument("--snap", default=None, help="comma-separated times in seconds: save one viewer image per time "
+                "for the episode chosen by --start (or the first completed one with --start 0), then exit")
+ap.add_argument("--snap-dir", default="/mnt/c/YangJaehong/train_logs/viewer/snaps")
 args = ap.parse_args()
 
 data = pickle.load(open(args.file, "rb"))
@@ -95,7 +98,7 @@ FONT = {
     "2": [[(0, 6), (4, 6), (4, 3), (0, 3), (0, 0), (4, 0)]],
     "3": [[(0, 6), (4, 6), (4, 0), (0, 0)], [(1, 3), (4, 3)]],
     "4": [[(0, 6), (0, 3), (4, 3)], [(4, 6), (4, 0)]],
-    "5": S_,
+    "5": [[(4, 6), (0, 6), (0, 3), (3, 3), (4, 2), (4, 1), (3, 0), (0, 0)]],
     "6": [[(4, 6), (0, 6), (0, 0), (4, 0), (4, 3), (0, 3)]],
     "7": [[(0, 6), (4, 6), (1, 0)]],
     "8": O_ + [[(0, 3), (4, 3)]],
@@ -108,6 +111,9 @@ FONT = {
 }
 
 
+THICK = [(0.0, 0.0), (0.25, 0.0)]  # stroke copies (in font units); --snap uses a denser grid
+
+
 def text_lines(rows, origin, size, color):
     """rows: list of strings, top row first. Returns (verts (2n,3), colors (n,3))."""
     u = size / 6.0
@@ -118,9 +124,9 @@ def text_lines(rows, origin, size, color):
             o = base + right * (c * 6 * u)
             for stroke in FONT.get(ch, []):
                 for (x0, y0), (x1, y1) in zip(stroke[:-1], stroke[1:]):
-                    for d in (0.0, 0.25 * u):  # second copy slightly offset = thicker strokes
-                        p0 = o + right * (x0 * u + d) + up * (y0 * u)
-                        p1 = o + right * (x1 * u + d) + up * (y1 * u)
+                    for dx, dy in THICK:  # offset copies of each stroke = thicker lines
+                        p0 = o + right * (x0 * u + dx * u) + up * (y0 * u + dy * u)
+                        p1 = o + right * (x1 * u + dx * u) + up * (y1 * u + dy * u)
                         verts += [p0, p1]
                         cols.append(color)
     return np.array(verts, dtype=np.float32).reshape(-1, 3), np.array(cols, dtype=np.float32).reshape(-1, 3)
@@ -202,6 +208,32 @@ def poll():
 
 
 dt = meta["physics_dt"]
+
+if args.snap:  # still images with the policy in use and the elapsed time written in the scene
+    if args.start == 0:
+        k = next(i for i, e in enumerate(episodes) if e.get("completed"))
+    else:
+        k = max(0, min(args.start - 1, len(episodes) - 1))
+    e = episodes[k]
+    os.makedirs(args.snap_dir, exist_ok=True)
+    TEXT_ORIGIN = target + up * 0.17 - right * 0.27  # clear of the fingers in the still images
+    THICK = [(i * 0.12, j * 0.12) for i in range(5) for j in range(5)]  # bold strokes
+    for t in [float(s) for s in args.snap.split(",")]:
+        idx = min(int(round(t / dt)), len(e["frames"]) - 1)
+        p = int(e["policy"][idx]) if "policy" in e else 0
+        name = meta["policies"][p] if "policies" in meta else "GENERALIST"
+        color = CYAN if p == 0 else ORANGE
+        note = f"SWITCH AT {meta['switch_sec']:.1f} SEC" if p == 0 else f"SWITCHED AT {meta['switch_sec']:.1f} SEC"
+        for _ in range(30):  # let the viewer settle on this frame
+            set_frame(e["frames"][idx])
+            draw_overlay([f"{TARGET}", f"T = {idx * dt:4.1f} SEC"], [(f"POLICY: {name}", color), (note, GREY)])
+            gym.draw_viewer(viewer, sim, True)
+            poll()
+        path = os.path.join(args.snap_dir, f"{TARGET}_ep{k + 1}_t{idx * dt:04.1f}s_{'gen' if p == 0 else 'spec'}.png")
+        gym.write_viewer_image_to_file(viewer, path)
+        print("saved", path, flush=True)
+    sys.exit(0)
+
 k = max(0, min(args.start - 1, len(episodes) - 1))
 while True:
     e = episodes[k]
